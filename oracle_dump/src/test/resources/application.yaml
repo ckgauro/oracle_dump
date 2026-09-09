@@ -1,0 +1,50 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:oracle-import-test;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  h2:
+    console:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  level:
+    com.demo.oracle_dump: DEBUG
+
+oracle-import:
+  scanner:
+    # Schedulers are disabled in tests; tests drive scanAll()/dispatch() explicitly for determinism.
+    enabled: false
+    interval: 1s
+    stable-file-check-delay: 0s
+    stable-scans-required: 2
+  processing:
+    enabled: false
+    poll-interval: 1s
+    max-workers: 2
+    retry-backoff: 1s
+    retry-backoff-max: 5s
+    max-attempts: 3
+    stale-processing-timeout: 1m
+    shutdown-grace-period: 5s
+  checksum:
+    algorithm: SHA-256
+    buffer-size-mb: 1
+  oracle-client:
+    validate-on-startup: false
+    fail-startup-on-missing-executable: false
+  importer:
+    mode: mock
+    mock-duration: 10ms
+    import-log-root: "./target/test-logs/imports"
+  clients: []
