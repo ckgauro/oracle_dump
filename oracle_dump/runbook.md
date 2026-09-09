@@ -306,56 +306,150 @@ Health components you'll see:
 
 ## Step 5 — Drop a dump file
 
-**Use the upload convention:** write the file with a temporary suffix, then rename it into place.
-The scanner ignores `*.part`, `*.tmp`, `*.partial`, `*.copying`, so a half-copied file is never
-picked up.
+**Goal of this step:** put a file into one of the watched folders so the service picks it up. In
+real life this file is an Oracle export; for this walkthrough any file will do. Keep the service
+running; use your **second terminal**.
+
+### 5.1 — The golden rule: never let the scanner see a half-written file
+
+The service scans the folder on a timer. If it catches a file **mid-copy**, it could try to import
+something incomplete. Two safeguards prevent that:
+
+1. **The scanner ignores** files ending in `.part`, `.tmp`, `.partial`, `.copying`.
+2. So the safe pattern is: **write to `name.dmp.part`, then rename to `name.dmp`** once the write
+   is finished. A rename is instant, so the scanner only ever sees a complete file.
+
+### 5.2 — Create a test file (macOS / Linux)
+
+Run this in the project folder (the one with `pom.xml`, so the relative path below resolves):
 
 ```bash
-# simulate a copy, then make it visible atomically
+# 1. write a ~7 KB file with a temporary name the scanner ignores
 printf 'PAYLOAD%.0s' $(seq 1 1000) \
   > var/oracle-dumps/client-a/clienta_2026_09.dmp.part
+
+# 2. rename it into place — now the scanner will pick it up
 mv var/oracle-dumps/client-a/clienta_2026_09.dmp.part \
    var/oracle-dumps/client-a/clienta_2026_09.dmp
 ```
 
-> **NOTE — real uploads.** Point your export/backup job at
+- `printf 'PAYLOAD%.0s' $(seq 1 1000)` just prints the word `PAYLOAD` 1000 times — a quick way to
+  make a non-empty file. The content is irrelevant.
+- `>` writes that output to the file.
+- `mv old new` renames it.
+
+### 5.3 — Create a test file (Windows PowerShell)
+
+```powershell
+"PAYLOAD" * 1000 > var\oracle-dumps\client-a\clienta_2026_09.dmp.part
+Rename-Item var\oracle-dumps\client-a\clienta_2026_09.dmp.part clienta_2026_09.dmp
+```
+
+You can also just **copy any existing file** into `var\oracle-dumps\client-a\` and rename its
+extension to `.dmp` — the mechanism is the same.
+
+### 5.4 — Which folder?
+
+The `dev` profile created two: `var/oracle-dumps/client-a` and `var/oracle-dumps/client-b`. Use
+either. The filename doesn't matter, but it must end in `.dmp`.
+
+> **NOTE — how this looks with real uploads.** Point your export/backup job at
 > `\\nas01\oracle-dumps\client-a\<name>.dmp.part` and have it rename to `.dmp` when the copy
-> completes. If you cannot control the upstream, just drop the `.dmp` directly — the scanner will
-> wait for `stable-scans-required` unchanged scans **and** a quiet period
-> (`stable-file-check-delay`) before touching it. On a large file that means a few scan cycles of
-> `STABILIZING` first, which is expected.
+> completes. If you can't control the upstream tool and it writes straight to `.dmp`, that still
+> works — the scanner waits for several unchanged scans (`stable-scans-required`) **and** a quiet
+> period (`stable-file-check-delay`) before touching the file, so you'll see it sit in
+> `STABILIZING` for a few scan cycles first. That's expected, not a hang.
 
 ---
 
 ## Step 6 — Watch it get imported
 
-Poll `/api/status` (or watch the server log). The row moves
-`STABILIZING → PENDING_IMPORT → (QUEUED → CHECKSUMMING →) IMPORTING → IMPORTED`.
+**Goal of this step:** watch the file you just dropped move through the pipeline to `IMPORTED`.
+You don't do anything here except observe — the service does the work automatically.
+
+### 6.1 — Two ways to watch
+
+- **The server log** — look at the terminal running the service from Step 3. It prints a line for
+  each stage.
+- **The status endpoint** — from your second terminal, run this every few seconds:
+
+  ```bash
+  curl -s localhost:8080/api/status | jq
+  ```
+
+  On macOS/Linux you can auto-repeat it: `watch -n 2 'curl -s localhost:8080/api/status | jq'`
+  (press Ctrl-C to stop watching — this does **not** stop the service).
+
+### 6.2 — The stages you'll see
+
+The file's status moves through:
+
+```text
+STABILIZING → PENDING_IMPORT → (QUEUED → CHECKSUMMING →) IMPORTING → IMPORTED
+```
+
+| Stage | What's happening |
+|---|---|
+| `STABILIZING` | The scanner has seen the file but is waiting to be sure it's fully written (size + timestamp unchanged across scans). |
+| `PENDING_IMPORT` | The file is confirmed stable and queued for a worker. |
+| `QUEUED` / `CHECKSUMMING` | A worker picked it up and is computing its SHA-256 (used for duplicate detection). |
+| `IMPORTING` | The import itself is running. In `dev`/mock mode this is a 3-second simulation. |
+| `IMPORTED` | Done. Success. |
+
+### 6.3 — How long it takes (dev profile)
+
+Roughly **10–20 seconds** in `STABILIZING`, then the import starts within one poll cycle (5 s), and
+the mock import runs for 3 s. So about half a minute end to end. A tiny file can still take the
+full `STABILIZING` wait — that timing is deliberate, not a function of size.
 
 ![drop → scan → import](images/r04-drop-and-import.png)
 *Top: the drop commands. Middle: `/api/status` over ~20 s. Bottom: the matching server log —
 `Discovered dump` → `Dump eligible for import` → `Dispatched 1 dump(s)` → `Checksum SHA-256 …` →
 `[mock] imported …` → `Imported record 1 …`.*
 
-Timings in the `dev` profile: ~10–20 s of `STABILIZING`, then import within one `poll-interval`
-(5 s). The mock import itself takes `mock-duration` (3 s in `dev`).
+> **If nothing happens after a minute:** check the filename really ends in `.dmp` (not `.dmp.part`),
+> that it's in `var/oracle-dumps/client-a` or `.../client-b`, and that the scanner is enabled in
+> the Step 3 log. See [Troubleshooting](#troubleshooting).
 
 ---
 
 ## Step 7 — Inspect the result and the import log
 
+**Goal of this step:** look at what the service recorded about the import — the database row and
+the detailed log file it wrote.
+
+### 7.1 — List the imported files
+
 ```bash
 curl -s 'localhost:8080/api/dumps?limit=20' | jq
 ```
+
+- `/api/dumps` returns one JSON object per file the service knows about.
+- `?limit=20` caps the list at 20 rows. You can also filter, e.g. `?status=IMPORTED` or
+  `?status=FAILED`.
+
+Each row includes: `status`, `sizeBytes`, `sha256` (the content fingerprint), `attemptCount`
+(how many import tries), `importDurationMs`, and `importLogPath` (where the detailed log is on
+disk).
 
 ![GET /api/dumps](images/r05-dumps.png)
 *Each row: `status`, `sizeBytes`, the `sha256`, `attemptCount`, `importDurationMs`, and
 `importLogPath`.*
 
-Open the per-import log (its **path** is stored in the DB; the content is on disk):
+### 7.2 — Open the detailed import log
+
+The database stores only the **path** to the log; the full text is a file on disk. This one-liner
+grabs the path of the most recent row and prints that file:
 
 ```bash
 cat "$(curl -s localhost:8080/api/dumps | jq -r '.[0].importLogPath')"
+```
+
+How it works: the inner `curl ... | jq -r '.[0].importLogPath'` prints just the path string; `$( )`
+substitutes it into the `cat` command. On **Windows PowerShell**:
+
+```powershell
+Get-Content (curl -s localhost:8080/api/dumps | ConvertFrom-Json)[0].importLogPath
 ```
 
 ![the import log file](images/r06-import-log.png)
@@ -363,78 +457,168 @@ cat "$(curl -s localhost:8080/api/dumps | jq -r '.[0].importLogPath')"
 `DIRECTORY=CLIENT_A_IMPORT_DIR`, `Bytes processed`, `successfully completed`. A real `impdp` run
 will stream its stdout/stderr to this same file.*
 
-Log files are organised as `logs/imports/<client>/<yyyy>/<MM>/<uuid>.log`.
+Log files are laid out as `logs/imports/<client>/<yyyy>/<MM>/<uuid>.log`, so you can also find them
+by hand under the `logs/` folder.
 
-> **NOTE:** The original `.dmp` is **left untouched** after import. The service never deletes or
-> moves dump files; it only records `IMPORTED` in the metadata DB.
+> **NOTE:** The original `.dmp` file is **left exactly where it was**. The service never deletes or
+> moves dump files — it only records `IMPORTED` in its metadata database.
 
 ---
 
 ## Step 8 — Duplicate files
 
-If the same **content** appears again for the same **client** (any filename), it is **not**
-re-imported — it is marked `DUPLICATE`.
+**Goal of this step:** see what happens when the *same file content* arrives twice. This is a
+safety feature — it stops the same export being imported into Oracle twice.
+
+### 8.1 — The rule
+
+A file is a duplicate if another file with the **same content** was already seen **for the same
+client** — regardless of its filename. "Same content" means the same SHA-256 checksum. Duplicates
+are marked `DUPLICATE` and skipped: no import runs, no log file is written.
+
+### 8.2 — Try it
 
 ```bash
+# first file — let it finish importing
 printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > var/oracle-dumps/client-a/dupe_first.dmp
-#   ... wait for IMPORTED ...
+
+#   ... watch /api/status until dupe_first.dmp reaches IMPORTED ...
+
+# second file — different name, identical content
 printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > var/oracle-dumps/client-a/dupe_second.dmp
+```
+
+Note these use `>` directly (no `.part` rename) just to keep the example short — the `.part`
+convention from Step 5 is still the right habit for real files.
+
+### 8.3 — What you'll see
+
+`dupe_second.dmp` goes `STABILIZING → CHECKSUMMING`, then — because its checksum matches
+`dupe_first.dmp` for `client-a` — it short-circuits straight to `DUPLICATE` instead of `IMPORTING`.
+
+```bash
+curl -s 'localhost:8080/api/dumps?status=DUPLICATE' | jq
 ```
 
 ![content de-duplication](images/r07-duplicate.png)
 *`dupe_second.dmp` matches `dupe_first.dmp` on `(clientId + sha256)` during the checksum step and
 short-circuits to `DUPLICATE` — no `impdp` run, no log file.*
 
+> **NOTE:** The same content dropped for a *different* client (e.g. `client-b`) is **not** a
+> duplicate — it will import normally. De-duplication is per client.
+
 ---
 
 ## Step 9 — When an import fails, and how to retry
 
-An import can fail (Oracle error, IO error, or — in a real mode with no Oracle client — the
-"not implemented" `TODO`). **Retryable** failures back off and retry up to `max-attempts`; then the
-row is parked in `FAILED`.
+**Goal of this step:** see the failure path and learn the one command that puts a failed file back
+in the queue.
+
+### 9.1 — What "failed" means
+
+An import can fail for real reasons: an Oracle error, an IO error, or — if you switch to a real
+import mode without an Oracle client installed — the "not implemented yet" `TODO`. The service
+tells failures apart:
+
+- **Retryable** failure → it waits (`retry-backoff`) and tries again, up to `max-attempts` times.
+- After the last attempt → the row is parked in **`FAILED`** and left alone.
+
+### 9.2 — Deliberately cause a failure
+
+Stop the service (Ctrl-C), then restart it in a mode that has no working Oracle client, with a low
+attempt count so you don't wait long:
 
 ```bash
-# reproduce a failure: real import mode with no Oracle client installed
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev \
   -Dspring-boot.run.arguments="--oracle-import.importer.mode=impdp \
      --oracle-import.processing.max-attempts=2 --oracle-import.processing.retry-backoff=3s"
+```
 
+Then drop a file:
+
+```bash
 printf 'DATA%.0s' $(seq 1 1200) > var/oracle-dumps/client-a/needs_oracle.dmp
 ```
+
+### 9.3 — What you'll see
+
+The status goes `PENDING_IMPORT (attempt 0)` → `PENDING_IMPORT (attempt 1)` (first try failed,
+backing off) → `FAILED (attempt 2)`.
+
+Look at why it failed:
+
+```bash
+curl -s 'localhost:8080/api/dumps?status=FAILED' | jq '.[0] | {status,attemptCount,lastError}'
+```
+
+`lastError` holds the message — here, that the real `impdp` importer isn't implemented.
+
+### 9.4 — Retry it
+
+After you've fixed the underlying cause, re-queue the row by its `id` (the `id` field in the JSON;
+`1` in this example):
+
+```bash
+curl -s -X POST localhost:8080/api/dumps/1/retry | jq
+```
+
+This resets it to `PENDING_IMPORT` with `attemptCount` back to `0`.
 
 ![failure path + retry](images/r08-failed-retry.png)
 *`PENDING_IMPORT (0)` → `PENDING_IMPORT (1)` (attempt 1 failed, backing off) → `FAILED (2)`.
 `GET /api/dumps?status=FAILED` shows `lastError`. After fixing the root cause,
 `POST /api/dumps/1/retry` resets it to `PENDING_IMPORT` with `attemptCount = 0`.*
 
-```bash
-curl -s 'localhost:8080/api/dumps?status=FAILED' | jq '.[0] | {status,attemptCount,lastError}'
-curl -s -X POST localhost:8080/api/dumps/1/retry | jq
-```
+> **NOTE — fix the cause first.** `retry` only re-queues the row; it doesn't fix anything. In this
+> example it will just fail again until a real `impdp.exe` is reachable — so switch back to
+> `mode: mock` (restart without the extra arguments) to see it succeed. `retry` only works on
+> `FAILED` and `MISSING` rows; anything else returns HTTP `409`.
 
-> **NOTE — fix the cause first.** `retry` only re-queues the row. In `impdp` mode it will fail
-> again until `impdp.exe` is actually reachable. `retry` works on `FAILED` and `MISSING` rows only;
-> anything else returns `409`.
-
-> **NOTE — crash recovery is automatic.** If a worker or the whole service dies mid-import, the row
-> is left in an in-flight state and is reset to `PENDING_IMPORT` by the `StaleRecordReaper` — after
-> `stale-processing-timeout`, and always with a full sweep on the next startup. You do not need to
-> retry those manually.
+> **NOTE — crash recovery is automatic.** If a worker or the whole service dies in the middle of an
+> import, that row is left half-done and is automatically reset to `PENDING_IMPORT` — after
+> `stale-processing-timeout`, and always on the next startup. You do **not** need to retry those by
+> hand.
 
 ---
 
 ## Step 10 — Stop the service gracefully
 
-Press **Ctrl-C** in the run terminal (or `sc stop` / your service wrapper's stop command).
+**Goal of this step:** shut the service down cleanly so no import is left in a broken state.
+
+### 10.1 — How to stop it
+
+Go to the terminal running the service (the one from Step 3) and press **Ctrl-C** once.
+
+- If it's running as a Windows Service instead, use `sc stop oracle-dump-importer` or your service
+  wrapper's stop command.
+- Press Ctrl-C **once** and wait — pressing it repeatedly can force-kill the process before it
+  finishes cleaning up.
+
+### 10.2 — What a clean shutdown looks like
+
+In the log you'll see, in order:
+
+```text
+pipeline stopping; no new work will be accepted
+... (in-flight imports finish, up to shutdown-grace-period — default 2 minutes) ...
+All in-flight imports completed cleanly
+... (Tomcat and the database connection close) ...
+```
+
+Then the prompt returns — the service has exited.
 
 ![graceful shutdown](images/r09-shutdown.png)
 *`pipeline stopping; no new work will be accepted` → in-flight imports are given up to
 `shutdown-grace-period` (default 2 min) to finish → `All in-flight imports completed cleanly` →
 Tomcat and the datasource close.*
 
-> **NOTE:** An import still running when the grace period elapses is **not** killed abruptly at the
-> DB level — its row is simply reclaimed to `PENDING_IMPORT` on the next startup and retried. No
-> dump is lost, only delayed.
+> **NOTE:** If an import is still running when the 2-minute grace period runs out, it is **not**
+> corrupted. Its row is simply reclaimed to `PENDING_IMPORT` the next time you start the service
+> and re-run. Nothing is lost, only delayed.
+
+> **NOTE:** In the `dev` profile the database is in-memory, so stopping the service **erases all
+> the run history** (`/api/dumps` starts empty next time). That's expected for `dev`. Option B and
+> production use an on-disk database that survives restarts.
 
 ---
 
