@@ -8,19 +8,24 @@ built this way, and *where* to extend it.
 **Scope:** the whole application as it stands today (mock importer live, real `impdp` execution
 deliberately left as a `TODO` per `CLAUDE.md` §10).
 
-All diagrams are stored as PNG (light background) under [`images/`](images/). Each is captioned with
-the source component so you can jump straight to the code.
+Detailed diagrams are stored as PNG (light background) under [`images/`](images/). Each is captioned
+with the source component so you can jump straight to the code.
+
+Two **Mermaid** diagrams render inline on GitHub without any image files and are the fastest way in:
+
+- [**§2 — the whole system in one picture**](#2-system-context) (static structure)
+- [**§6 — one dump file, end to end**](#6-the-processing-pipeline-stage-by-stage) (dynamic sequence)
 
 ---
 
 ## Table of contents
 
 1. [What the service does](#1-what-the-service-does)
-2. [System context](#2-system-context)
+2. [System context](#2-system-context) — *full system-design diagram*
 3. [Technology stack](#3-technology-stack)
 4. [Component architecture](#4-component-architecture)
 5. [Domain model & metadata schema](#5-domain-model--metadata-schema)
-6. [The processing pipeline, stage by stage](#6-the-processing-pipeline-stage-by-stage)
+6. [The processing pipeline, stage by stage](#6-the-processing-pipeline-stage-by-stage) — *end-to-end sequence diagram*
 7. [State machine](#7-state-machine)
 8. [Concurrency & transaction model](#8-concurrency--transaction-model)
 9. [File-stability detection](#9-file-stability-detection)
@@ -64,6 +69,97 @@ shares (`\\nas01\oracle-dumps\...`). See `CLAUDE.md` for the full Windows runtim
 ![System context](images/a01-context.png)
 *Where the service sits. Components: upstream export/copy → dump directories → this application →
 Oracle DB; metadata DB attached via JPA.*
+
+### The whole system in one diagram
+
+Everything the application is made of, and everything it talks to. Boxes inside **APP** are Spring
+beans (grouped into the four lanes from §4); cylinders are stores; the parallelogram is the one
+not-yet-built piece. Solid arrows are the normal flow of a dump file; dashed arrows are
+configuration-time wiring, reads of a shared flag, or future work.
+
+```mermaid
+flowchart TB
+    OPS(["Operator / monitoring"])
+
+    subgraph EXT["Outside the application"]
+        EXP["Upstream export / backup job"]
+        SHARE[("Dump directories<br/>local drive or UNC share<br/>one folder per client, *.dmp")]
+        ORA[("Oracle Database Server<br/>reads dumps via a DIRECTORY object<br/>separate filesystem context")]
+    end
+
+    EXP -->|"copy as *.dmp.part, then rename to *.dmp"| SHARE
+
+    subgraph APP["Oracle Dump Importer — Spring Boot, runs as a Windows Service"]
+        direction TB
+
+        subgraph DISC["Discovery lane — 1 scheduler thread"]
+            SS["ScanScheduler<br/>@Scheduled fixed-delay"]
+            DSC["DirectoryScanner<br/>per-client failure isolation"]
+            CDS["ClientDirectoryScanner<br/>NIO DirectoryStream, own TX"]
+            FSC["FileStabilityChecker<br/>pure fn: still-copying / eligible"]
+            SS --> DSC --> CDS --> FSC
+        end
+
+        subgraph DISP["Dispatch lane — 1 scheduler thread"]
+            ID["ImportDispatcher<br/>free-capacity math + atomic claim"]
+            SRR["StaleRecordReaper<br/>crash recovery"]
+        end
+
+        subgraph WK["Import lane — bounded pool: max-workers threads"]
+            DP["DumpProcessor<br/>drives one row through 6 segments"]
+            PS["ProcessingSteps<br/>the short @Transactional steps"]
+            CS["ChecksumService<br/>streaming SHA-256 (+ reuse)"]
+            STR{{"DumpImporter — strategy"}}
+            MOCK["MockDumpImporter<br/>default, writes a realistic log"]
+            ODP["OracleDataPumpImporter<br/>impdp / imp — .start() is TODO"]
+            DP --> PS
+            DP --> CS
+            DP --> STR
+            STR -.->|"importer.mode = mock"| MOCK
+            STR -.->|"importer.mode = impdp / imp"| ODP
+        end
+
+        subgraph XC["Cross-cutting"]
+            CR["ClientRegistry<br/>1 fair Semaphore per client"]
+            PL["ProcessingLifecycle<br/>SmartLifecycle graceful drain"]
+            PST["PipelineState<br/>acceptingWork flag"]
+            OCV["OracleClientValidator<br/>startup .exe existence checks"]
+            REST["StatusController<br/>/api/status · /api/dumps · /retry"]
+            HLTH["Health indicators<br/>dumpDirectories · oracleClient"]
+        end
+
+        MDB[("Metadata DB — H2 file<br/>one table: DUMP_FILE<br/>single source of truth")]
+
+        FSC -->|"upsert row: STABILIZING / PENDING_IMPORT"| MDB
+        ID -->|"claim N PENDING_IMPORT rows"| MDB
+        ID -->|"submit(row)"| DP
+        SRR --> MDB
+        PS --> MDB
+        DP -->|"tryAcquire permit"| CR
+        REST --> MDB
+        PL --> PST
+        PST -.->|"read"| SS
+        PST -.->|"read"| ID
+        OCV --> HLTH
+    end
+
+    CDS -->|"list + stat files"| SHARE
+    CS -->|"full file read to hash"| SHARE
+    MOCK -->|"writes transcript"| LOGF[("Import log files<br/>logs/imports/&lt;client&gt;/&lt;yyyy&gt;/&lt;MM&gt;/&lt;uuid&gt;.log")]
+    ODP -->|"ProcessBuilder: impdp DIRECTORY=.. DUMPFILE=.."| ORA
+    ODP -.->|"needs the dump on an Oracle-reachable path"| STG[/"DumpStagingService<br/>interface only — future"/]
+    STG -.->|"stage share → Oracle DIRECTORY path"| ORA
+
+    OPS -->|"HTTP"| REST
+    OPS -->|"HTTP"| HLTH
+```
+
+**How to read it:** a file lands in `SHARE` → the **Discovery lane** records and stabilises it in
+`MDB` → the **Dispatch lane** atomically claims eligible rows up to free worker capacity → an
+**Import lane** worker checksums, de-dups, acquires the per-client permit, and runs the importer,
+writing outcome to `MDB` and a transcript to `LOGF`. `REST`/`HLTH` expose state to operators; the
+`PipelineState` flag lets `ProcessingLifecycle` stop intake for a graceful drain. The real Oracle
+call (`ODP → ORA`) and `DumpStagingService` are the only unfinished parts.
 
 The service is a **pull** system: nothing pushes work to it. It polls the configured directories and
 the metadata DB on fixed delays.
@@ -180,6 +276,88 @@ Indexes: `(status, next_eligible_at)` for the claim query, `(client_id, sha256)`
 
 ![Processing pipeline](images/a03-pipeline.png)
 *Each stage, the `DumpStatus` it sets, the component that runs it, and what it does.*
+
+### One dump file, end to end (sequence)
+
+The full life of a single `.dmp` from copy to terminal state, across every collaborator. The
+coloured bands are the three scheduling contexts; the note at the bottom is the crash-recovery path
+that runs independently.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Up as Upstream copy
+    participant Dir as Dump directory
+    participant Scan as Scanner — scheduler thread
+    participant DB as Metadata DB — DUMP_FILE
+    participant Disp as ImportDispatcher
+    participant Pool as Bounded worker pool
+    participant Proc as DumpProcessor — worker thread
+    participant Sum as ChecksumService
+    participant Sem as Per-client Semaphore
+    participant Imp as DumpImporter — mock or impdp
+    participant Log as Import log file
+
+    Up->>Dir: write name.dmp.part, then rename to name.dmp
+
+    rect rgb(235,242,255)
+    Note over Scan,DB: DISCOVERY — every scanner.interval, one short TX per client
+    loop each scan cycle
+        Scan->>Dir: list + stat *.dmp (skip .part/.tmp/.partial/.copying)
+        Scan->>DB: upsert row for this path
+        alt size or mtime changed, or too few stable scans
+            Scan->>DB: status = STABILIZING, stable_scan_count updated
+        else stable for N scans AND mtime older than stable-file-check-delay
+            Scan->>DB: status = PENDING_IMPORT, next_eligible_at = now
+        end
+    end
+    end
+
+    rect rgb(235,255,238)
+    Note over Disp,Pool: DISPATCH — every processing.poll-interval
+    loop each dispatcher tick
+        Disp->>Pool: free = poolMax + queue - active - queued
+        Disp->>DB: UPDATE ... SET QUEUED, worker_id, claimed_at WHERE id = ? AND status = PENDING_IMPORT
+        DB-->>Disp: rowcount = 1 (this caller won the claim)
+        Disp->>Pool: submit(row)
+    end
+    end
+
+    rect rgb(255,249,235)
+    Note over Proc,Log: PROCESSING — one worker thread, slow phases hold NO DB transaction
+    Pool->>Proc: run(row)
+    Proc->>DB: beginChecksum [TX] — re-stat + guard, status = CHECKSUMMING
+    Proc->>Sum: hash the file  [no TX — seconds to hours]
+    Sum->>Dir: streaming full read
+    Sum-->>Proc: sha256
+    Proc->>DB: completeChecksum [TX] — findChecksumSiblings(client, sha256)
+    alt identical content already seen for this client
+        Proc->>DB: status = DUPLICATE, duplicate_of_id set
+        Note right of Proc: no import, no log file
+    else unique content
+        Proc->>DB: status = IMPORTING, import_log_path set, attempt_count++
+        Proc->>Sem: tryAcquire(poll-interval)
+        alt no permit free
+            Proc->>DB: status = PENDING_IMPORT (requeue, attempt NOT consumed)
+        else permit acquired
+            Proc->>Imp: importDump(request)  [no TX]
+            Imp->>Log: write transcript / impdp stdout + stderr
+            Imp-->>Proc: Success or Failure
+            alt Success
+                Proc->>DB: recordSuccess [TX] — status = IMPORTED, import_duration_ms
+            else retryable AND attempts remain
+                Proc->>DB: recordFailure [TX] — status = PENDING_IMPORT, next_eligible_at = now + backoff
+            else permanent OR attempts exhausted
+                Proc->>DB: recordFailure [TX] — status = FAILED, last_error
+            end
+            Proc->>Sem: release()  [in finally]
+        end
+    end
+    end
+
+    Note over Disp,DB: CRASH RECOVERY — StaleRecordReaper (every tick, plus a full sweep at startup)<br/>resets QUEUED / CHECKSUMMING / IMPORTING rows older than stale-processing-timeout back to PENDING_IMPORT
+
+```
 
 Worked example (values from the dev run in the runbook):
 
