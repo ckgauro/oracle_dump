@@ -242,19 +242,65 @@ Option A until you need this.
 
 ## Step 4 — Verify it is healthy
 
+**Goal of this step:** confirm from *outside* the program that it is running and ready, by asking
+it two questions over HTTP. Leave the service from Step 3 running and do this in a **new terminal**.
+
+### 4.1 — One-time: install the helper tools
+
+The examples use two small command-line tools:
+
+| Tool | What it's for | Install / check |
+|---|---|---|
+| `curl` | Sends an HTTP request from the terminal. Pre-installed on macOS, most Linux, and Windows 10+. | `curl --version` |
+| `jq` | Pretty-prints and colours the JSON reply so it's readable. Optional. | `jq --version` — macOS: `brew install jq`, Debian/Ubuntu: `sudo apt install jq`, Windows: `winget install jqlang.jq` |
+
+If you don't want to install `jq`, just drop the `| jq` part from every command — you'll get the
+same JSON on one line.
+
+### 4.2 — Ask the service how it's doing
+
 ```bash
 curl -s localhost:8080/api/status         | jq
 curl -s localhost:8080/actuator/health    | jq
 ```
 
+What the parts mean:
+
+| Part | Meaning |
+|---|---|
+| `curl -s` | Make an HTTP GET request; `-s` = "silent", hides the download progress bar. |
+| `localhost:8080` | Your own machine, port 8080 — where the service from Step 3 is listening. (If you started it on a different port, use that here.) |
+| `/api/status` | This app's own summary endpoint — counts per status, importer mode, whether it's accepting work. |
+| `/actuator/health` | A standard Spring Boot endpoint reporting `UP` / `DOWN` for each subsystem. |
+| `| jq` | Pipe the JSON reply through `jq` to format it. |
+
+### 4.3 — What a healthy reply looks like
+
+`/api/status` on a fresh start: every `DumpStatus` count is `0`, `importerMode` is `MOCK`, and
+`acceptingWork` is `true`.
+
+`/actuator/health`: top-level `"status": "UP"`, with a `dumpDirectories` section listing each
+client directory.
+
 ![status and health](images/r03-status-health.png)
 *`/api/status` shows every `DumpStatus` at `0` on a fresh start, `importerMode: MOCK`,
 `acceptingWork: true`. `/actuator/health` is `UP`, with per-client `dumpDirectories` details.*
 
+Health components you'll see:
+
 | Health component | Meaning |
 |---|---|
-| `dumpDirectories` | `UP` = every enabled client's directory is readable. `OUT_OF_SERVICE` = at least one share is unreachable (temporary; the scanner will retry). |
-| `oracleClient` | In `mock` mode this stays `UP` even if `impdp.exe` is missing (informational). In a real mode a bad path makes it `OUT_OF_SERVICE`. |
+| `dumpDirectories` | `UP` = every enabled client's directory is readable. `OUT_OF_SERVICE` = at least one directory/share is unreachable right now (temporary; the scanner keeps retrying). |
+| `oracleClient` | In `mock` mode this stays `UP` even if `impdp.exe` is missing (just informational). In a real import mode a bad path makes it `OUT_OF_SERVICE`. |
+
+### 4.4 — If the check fails
+
+| You see | What it means | What to do |
+|---|---|---|
+| `curl: (7) Failed to connect to localhost port 8080` | The service isn't running (or is still starting, or is on another port) | Check the Step 3 terminal for `Started OracleDumpApplication`; wait a few seconds and retry |
+| `curl: command not found` | `curl` isn't installed | Install it, or open the two URLs in a web browser instead |
+| JSON prints but `jq: command not found` follows | `jq` isn't installed | Remove `| jq` from the command, or install `jq` (see 4.1) |
+| `/actuator/health` shows `"status": "OUT_OF_SERVICE"` | A client dump directory isn't readable | In `dev` mode the folders are auto-created — check the Step 3 log for errors; otherwise fix the path/share and it recovers on its own |
 
 ---
 
