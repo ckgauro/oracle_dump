@@ -61,19 +61,88 @@ ls    # you should see: pom.xml  src/  mvnw  application*.yaml under src/main/re
 
 ## Step 2 — Build and run the tests
 
+**Goal of this step:** turn the source code into a runnable program (`.jar`) and prove it works by
+running the automated tests. You do this once now, and again any time you change the code.
+
+### 2.1 — Open a terminal in the right folder
+
+You must be in the folder that contains `pom.xml` — the same folder from
+[Step 1](#step-1--get-the-code) (`.../oracle_dump/oracle_dump`). Check first:
+
+```bash
+pwd     # shows where you are   (on Windows: cd)
+ls      # you must see: pom.xml  mvnw  mvnw.cmd  src/   (on Windows: dir)
+```
+
+If you don't see `pom.xml`, `cd` into the correct folder before continuing.
+
+### 2.2 — Run the build
+
+Copy this line exactly and press Enter:
+
 ```bash
 ./mvnw clean verify
 ```
 
-This compiles, runs **all 40 tests** (unit + an end-to-end pipeline test) and produces the runnable
-jar `target/oracle_dump-0.0.1-SNAPSHOT.jar`.
+On **Windows** use the `.cmd` version instead:
+
+```bat
+mvnw.cmd clean verify
+```
+
+What the parts mean, so it isn't magic:
+
+| Part | What it does |
+|---|---|
+| `./mvnw` | The **Maven wrapper** — a small script included in the repo. It auto-downloads the exact build tool version needed, so you do **not** have to install Maven yourself. `./` means "run the script in *this* folder". |
+| `clean` | Deletes the previous build output (the `target/` folder) so you start fresh. |
+| `verify` | Compiles the code, runs **all the tests**, and packages the `.jar`. If any test fails, the build stops here. |
+
+### 2.3 — First run is slow — that's normal
+
+The **first** time, Maven downloads all the libraries the project depends on. This needs an
+internet connection and can take several minutes. You'll see many `Downloading...` /
+`Downloaded...` lines. Later runs reuse the downloads and take well under a minute.
+
+### 2.4 — What a successful run looks like
+
+Near the bottom of the output you should see the test summary followed by `BUILD SUCCESS`:
+
+```text
+Tests run: 40, Failures: 0, Errors: 0, Skipped: 1
+...
+BUILD SUCCESS
+```
+
+`Skipped: 1` is **expected** on macOS/Linux — that one test only checks Windows-style network
+paths, so it deliberately doesn't run here. `Failures: 0, Errors: 0` is what matters.
 
 ![mvnw clean verify](images/r01-build-verify.png)
-*Expected tail: `Tests run: 40, Failures: 0, Errors: 0, Skipped: 1` then `BUILD SUCCESS`. The 1
-skipped test is Windows-only (UNC path handling) and is skipped on macOS/Linux.*
+*Expected tail: `Tests run: 40, Failures: 0, Errors: 0, Skipped: 1` then `BUILD SUCCESS`.*
 
-> **NOTE:** If the build fails on `spring-boot-h2console` / `spring-boot-starter-data-jpa-test`
-> resolution, you are offline — run once without `-o` so Maven can download dependencies.
+### 2.5 — What you now have
+
+A runnable program at:
+
+```text
+target/oracle_dump-0.0.1-SNAPSHOT.jar
+```
+
+This is the file [Step 3](#step-3--start-the-service) starts. You do not need to understand its
+contents — just know the build produced it.
+
+### 2.6 — If it fails
+
+| You see | What it means | What to do |
+|---|---|---|
+| `BUILD FAILURE` with `Could not resolve dependencies` / errors mentioning `spring-boot-h2console` | Maven couldn't download libraries — usually no internet, or you passed `-o` (offline) | Connect to the internet and run `./mvnw clean verify` again **without** `-o` |
+| `BUILD FAILURE` mentioning `release version 25` / `invalid target release` / `UnsupportedClassVersionError` | Wrong Java version — this project needs **JDK 25** | Run `java -version`; install JDK 25 (see [Step 0](#step-0--prerequisites)) and retry |
+| `bash: ./mvnw: Permission denied` | The wrapper script isn't marked executable | Run `chmod +x mvnw` once, then retry |
+| `BUILD FAILURE` with `Tests run: … Failures: 1` (or more) and a test class name | A genuine test failure | Re-read the named test's output; this is a real code/environment problem, not a setup quirk |
+
+> **TIP:** To build without running the tests (faster, but skips the safety check), use
+> `./mvnw clean package -DskipTests`. For a first run, prefer the full `verify` so you know the
+> project is healthy.
 
 ---
 
