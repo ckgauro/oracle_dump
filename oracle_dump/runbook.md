@@ -148,35 +148,95 @@ contents — just know the build produced it.
 
 ## Step 3 — Start the service
 
-### Option A — local development (recommended for a first run)
+**Goal of this step:** launch the program so it runs continuously in your terminal, watching for
+dump files. It stays running until you stop it (Step 10). For your **first run, use Option A.**
+
+> **Before you start:** make sure nothing else is already using **port 8080** on your machine, and
+> keep this terminal open — the service runs in the foreground and logs to it.
+
+### Option A — local development (use this for your first run)
+
+Run this from the same folder as before (the one with `pom.xml`):
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-The `dev` profile uses an **in-memory** database, fast timings, the **mock** importer, and
-**auto-creates** two local client directories so you have somewhere to drop files:
+On **Windows**:
+
+```bat
+mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+What the parts mean:
+
+| Part | What it does |
+|---|---|
+| `./mvnw spring-boot:run` | Tells the Maven wrapper to compile (if needed) and **start the application**. |
+| `-Dspring-boot.run.profiles=dev` | Starts it with the **`dev` profile** — a bundle of beginner-friendly settings (see below). Without this it uses the production defaults, which scan nothing until you write a config file. |
+
+The `dev` profile deliberately makes things easy:
+
+- an **in-memory** database — nothing is written to disk, every restart is clean;
+- **fast timings** — you don't wait long to see a file get imported;
+- the **mock importer** — it simulates an Oracle import instead of needing a real Oracle client;
+- it **auto-creates** two folders for you to drop files into:
+
+  ```text
+  ./var/oracle-dumps/client-a     (imports 1 file at a time)
+  ./var/oracle-dumps/client-b     (imports up to 2 files at a time)
+  ```
+
+#### How to tell it started correctly
+
+Watch the log it prints. You are looking for these lines (order may vary):
 
 ```text
-./var/oracle-dumps/client-a     (max-parallel-imports: 1)
-./var/oracle-dumps/client-b     (max-parallel-imports: 2)
+Registered client 'client-a' ...
+Active dump importer: MockDumpImporter (mode=MOCK)
+Oracle dump pipeline started
+Started OracleDumpApplication in <n> seconds
 ```
+
+Once you see `Started OracleDumpApplication`, the service is up. It will now sit there and keep
+logging every scan cycle — **that's normal, leave it running** and move to Step 4 in a *new*
+terminal.
 
 ![Start with the dev profile](images/r02-start-dev.png)
 *Look for `Registered client 'client-a' …`, `Active dump importer: MockDumpImporter (mode=MOCK)`,
-`Oracle dump pipeline started`, and `Started OracleDumpApplication`. The `impdp UNUSABLE` WARN is
-expected in mock mode.*
+`Oracle dump pipeline started`, and `Started OracleDumpApplication`.*
 
-### Option B — run the built jar (closer to production)
+> **NOTE:** A `WARN` line about `impdp` being `UNUSABLE` / `UNUSABLE` Oracle client is **expected**
+> in mock mode — the mock importer never calls Oracle, so a missing `impdp.exe` doesn't matter.
+> It is not an error.
+
+#### If it won't start
+
+| You see | What it means | What to do |
+|---|---|---|
+| `Web server failed to start. Port 8080 was already in use.` | Another program (maybe an old run of this service) holds the port | Stop the other program, or start on another port: add `-Dspring-boot.run.arguments=--server.port=8081` (then use `8081` in later steps) |
+| `Unknown lifecycle phase ".run.profiles=dev"` or the flag seems ignored | Your shell split the `-D...` argument | Wrap it in quotes: `./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"` |
+| It starts but exits immediately with a compile error | Code doesn't compile | Fix [Step 2](#step-2--build-and-run-the-tests) first — it must reach `BUILD SUCCESS` |
+| `command not found: ./mvnw` / `Permission denied` | Wrong folder, or script not executable | `cd` to the folder with `pom.xml`; run `chmod +x mvnw` once |
+
+To stop the service at any time, press **Ctrl-C** in this terminal (full details in
+[Step 10](#step-10--stop-the-service-gracefully)).
+
+### Option B — run the built jar (closer to production, optional)
+
+Once you're comfortable, you can run the `.jar` from [Step 2](#step-2--build-and-run-the-tests)
+directly, the way a server would:
 
 ```bash
 java -jar target/oracle_dump-0.0.1-SNAPSHOT.jar \
      --spring.config.additional-location=file:./config/application.yml
 ```
 
-With the default profile the datasource is a **file** H2 DB at `./data/oracle-import` and
-`clients: []` — so nothing is scanned until you add clients to your config (see
-[architecture.md §12](architecture.md#12-configuration-reference)).
+This uses the **default** profile, not `dev`: the database is a **file** on disk at
+`./data/oracle-import` (it survives restarts) and the client list is **empty** (`clients: []`), so
+**nothing is scanned** until you add client entries to a config file. See
+[architecture.md §12](architecture.md#12-configuration-reference) for the config format. Stick with
+Option A until you need this.
 
 ---
 
