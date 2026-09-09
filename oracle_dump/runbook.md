@@ -25,6 +25,15 @@ screenshot from a real run. Images live in [`images/`](images/).
 - [Step 8 — Duplicate files](#step-8--duplicate-files)
 - [Step 9 — When an import fails, and how to retry](#step-9--when-an-import-fails-and-how-to-retry)
 - [Step 10 — Stop the service gracefully](#step-10--stop-the-service-gracefully)
+- [Inspecting the H2 metadata database](#inspecting-the-h2-metadata-database)
+  - [What database am I connecting to?](#a--what-database-am-i-connecting-to)
+  - [The tables](#b--the-tables)
+  - [The `DUMP_FILE` columns in detail](#c--the-dump_file-columns-in-detail)
+  - [Option 1 — the H2 web console (easiest)](#option-1--the-h2-web-console-easiest)
+  - [Option 2 — the H2 command-line shell](#option-2--the-h2-command-line-shell)
+  - [Option 3 — any external JDBC client (DBeaver, IntelliJ)](#option-3--any-external-jdbc-client-dbeaver-intellij)
+  - [Option 4 — from your own backend / Java code](#option-4--from-your-own-backend--java-code)
+  - [Useful queries](#useful-queries)
 - [Running as a Windows Service](#running-as-a-windows-service)
 - [Troubleshooting](#troubleshooting)
 - [Quick command reference](#quick-command-reference)
@@ -622,6 +631,261 @@ Tomcat and the datasource close.*
 
 ---
 
+## Inspecting the H2 metadata database
+
+**Goal of this section:** open the database the service uses for its bookkeeping, see which tables
+exist, and run SQL against them — either with a GUI or from your own backend code.
+
+> The REST API (`/api/status`, `/api/dumps`) already exposes everything the service records, and is
+> the **recommended** way to read state. Go to the database directly when you want ad-hoc SQL,
+> bulk exports, or to debug a stuck row.
+
+### A — What database am I connecting to?
+
+The service uses **H2**, an embedded Java SQL database. Which H2 you get depends on the profile:
+
+| Profile | JDBC URL (from `application*.yaml`) | Where it lives | Reachable from outside the app? |
+|---|---|---|---|
+| **default** (jar / Option B) | `jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE` | a file on disk: `./data/oracle-import.mv.db` (relative to the working directory) | **Yes** — `AUTO_SERVER=TRUE` lets other processes connect to the same file while the app runs |
+| **`dev`** | `jdbc:h2:mem:oracle-import;DB_CLOSE_DELAY=-1` | RAM only, inside the running JVM | **No** — only the built-in web console (same JVM) can see it; it is **gone** when the service stops |
+
+Credentials for both: user **`sa`**, password **empty**.
+
+Other facts worth knowing:
+
+- **Schema management is automatic.** Hibernate creates/updates the schema on startup —
+  `ddl-auto: update` (default profile) or `create-drop` (`dev`). There is no `schema.sql`.
+- **Identifiers are UPPER-CASE.** H2 folds unquoted names, so the table is `DUMP_FILE` and columns
+  are `CLIENT_ID`, `IMPORT_LOG_PATH`, etc. Quote them only if you write them lower-case:
+  `"dump_file"` would **not** match.
+- **Timestamps are stored in UTC** (`hibernate.jdbc.time_zone: UTC`).
+- H2 version is **2.4.240** (Spring Boot 4.1.1) — matters only if you download a standalone jar
+  (see Option 2); use the same major version.
+
+### B — The tables
+
+The application defines exactly **one** table. Everything else you see belongs to H2 itself.
+
+| Table | Origin | Contents |
+|---|---|---|
+| `DUMP_FILE` | JPA entity `DumpFileRecord` | One row per dump file the service has ever seen, with its full lifecycle, checksum, import result and last error. This is the **single source of truth**. |
+| `INFORMATION_SCHEMA.*` | built into H2 | Catalog views — `TABLES`, `COLUMNS`, `INDEXES`, `CONSTRAINTS`, `SETTINGS`. Read-only; use them to explore. |
+
+There is **no** separate id-sequence table (the primary key is an H2 `IDENTITY` column) and no
+Flyway/Liquibase history table (migrations are not used yet).
+
+Indexes on `DUMP_FILE` (created from the entity's annotations):
+
+| Name | Columns | Why it exists |
+|---|---|---|
+| `UK_DUMP_CLIENT_PATH` | `CLIENT_ID, ABSOLUTE_PATH` (unique) | one row per physical file per client |
+| `IX_DUMP_STATUS_ELIGIBLE` | `STATUS, NEXT_ELIGIBLE_AT` | the dispatcher's "what can I run now?" query |
+| `IX_DUMP_CLIENT_CHECKSUM` | `CLIENT_ID, SHA256` | duplicate detection |
+| `IX_DUMP_IN_FLIGHT` | `STATUS, CLAIMED_AT` | the stale-record reaper |
+
+### C — The `DUMP_FILE` columns in detail
+
+| Column | Type (H2) | Null? | Meaning |
+|---|---|---|---|
+| `ID` | `BIGINT` identity | no | Primary key. This is the `id` you pass to `POST /api/dumps/{id}/retry`. |
+| `VERSION` | `BIGINT` | no | JPA optimistic-lock counter. Bumped on every update; don't touch it by hand. |
+| `CLIENT_ID` | `VARCHAR(128)` | no | Which configured client the file belongs to (`client-a`, …). |
+| `FILE_NAME` | `VARCHAR(512)` | no | The file's name only (no directory). |
+| `ABSOLUTE_PATH` | `VARCHAR(2048)` | no | Full normalised path (UNC-aware). Unique per client. |
+| `SIZE_BYTES` | `BIGINT` | no | File size at the last scan. |
+| `LAST_MODIFIED_EPOCH_MS` | `BIGINT` | no | File mtime (epoch millis). With `SIZE_BYTES`, this is the key that decides whether a stored checksum can be reused. |
+| `SHA256` | `VARCHAR(64)` | yes | Verified content hash. `NULL` until the checksum stage runs. |
+| `STATUS` | `VARCHAR(32)` | no | `DumpStatus` enum as text — see the list below. |
+| `STABLE_SCAN_COUNT` | `INTEGER` | no | Consecutive scans where size+mtime were unchanged. |
+| `FIRST_SEEN_AT` | `TIMESTAMP` | no | When the scanner first discovered the file (UTC). |
+| `LAST_SEEN_AT` | `TIMESTAMP` | no | Most recent scan that found the file (UTC). |
+| `PRESENT_ON_DISK` | `BOOLEAN` | no | `TRUE` if the last scan found the file; `FALSE` means it vanished. |
+| `NEXT_ELIGIBLE_AT` | `TIMESTAMP` | no | Earliest time the dispatcher may pick this row up (retry backoff pushes it into the future). |
+| `ATTEMPT_COUNT` | `INTEGER` | no | Import attempts so far. `retry` resets it to 0. |
+| `WORKER_ID` | `VARCHAR(128)` | yes | Which worker currently owns the row; `NULL` when not claimed. |
+| `CLAIMED_AT` | `TIMESTAMP` | yes | When the current worker claimed it. Used by the stale-record reaper. |
+| `IMPORT_STARTED_AT` | `TIMESTAMP` | yes | When the import began. |
+| `IMPORT_FINISHED_AT` | `TIMESTAMP` | yes | When it finished (success or failure). |
+| `IMPORT_DURATION_MS` | `BIGINT` | yes | Wall-clock import time in milliseconds. |
+| `IMPORT_LOG_PATH` | `VARCHAR(2048)` | yes | Path to the detailed per-import log file on disk. The log **content** is never stored in the DB (`CLAUDE.md` §22). |
+| `DUPLICATE_OF_ID` | `BIGINT` | yes | When `STATUS = DUPLICATE`, the `ID` of the row whose content this duplicates. |
+| `LAST_ERROR` | `CLOB` | yes | Error text from the most recent failure (truncated ~8 000 chars). |
+| `LAST_ERROR_AT` | `TIMESTAMP` | yes | When that error was recorded. |
+
+`STATUS` is always one of:
+`DISCOVERED`, `STABILIZING`, `PENDING_IMPORT`, `QUEUED`, `CHECKSUMMING`, `IMPORTING`, `IMPORTED`,
+`DUPLICATE`, `FAILED`, `MISSING`.
+
+### Option 1 — the H2 web console (easiest)
+
+Works for **both** profiles because it runs *inside* the service.
+
+1. Start the service (any profile).
+2. Open **`http://localhost:8080/h2-console`** in a browser.
+3. On the login screen enter:
+
+   | Field | default profile | `dev` profile |
+   |---|---|---|
+   | JDBC URL | `jdbc:h2:file:./data/oracle-import` | `jdbc:h2:mem:oracle-import` |
+   | User Name | `sa` | `sa` |
+   | Password | *(leave blank)* | *(leave blank)* |
+
+   The URL **must match the running app's URL** (the console connects as a peer). If you get
+   `Database may be already in use`, you typed a `file:` URL without `AUTO_SERVER` while the app
+   holds the file — add `;AUTO_SERVER=TRUE` or use the exact URL from the table in section A.
+4. Click **Connect**, then run SQL, e.g. `SELECT * FROM DUMP_FILE;`.
+
+> The console is enabled by `spring.h2.console.enabled: true` in `application.yaml`. **Turn it off
+> in production** (`architecture.md` §"Security notes").
+
+### Option 2 — the H2 command-line shell
+
+Good for scripting against the **file** DB (default profile). Use the H2 jar Maven already
+downloaded:
+
+```bash
+java -cp ~/.m2/repository/com/h2database/h2/2.4.240/h2-2.4.240.jar org.h2.tools.Shell \
+  -url "jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE" -user sa -password ""
+```
+
+On **Windows** the jar is under `%USERPROFILE%\.m2\repository\...`. At the `sql>` prompt:
+
+```sql
+SHOW TABLES;
+SELECT ID, CLIENT_ID, FILE_NAME, STATUS, ATTEMPT_COUNT FROM DUMP_FILE ORDER BY ID;
+```
+
+Non-interactive (one query, then exit): add `-sql "SELECT COUNT(*) FROM DUMP_FILE"`.
+
+The in-memory `dev` DB **cannot** be reached this way — it exists only in the service's JVM.
+
+### Option 3 — any external JDBC client (DBeaver, IntelliJ)
+
+For the **file** DB while the service is running, `AUTO_SERVER=TRUE` allows a second connection:
+
+- **Driver:** H2 (`org.h2.Driver`), version 2.4.x
+- **JDBC URL:** `jdbc:h2:file:/ABSOLUTE/PATH/TO/data/oracle-import;AUTO_SERVER=TRUE`
+  (use the real absolute path to the `.mv.db` file, without the `.mv.db` suffix)
+- **User:** `sa`  **Password:** *(blank)*
+
+If the service is **not** running, connect with a plain `jdbc:h2:file:/ABSOLUTE/PATH/...` URL (no
+`AUTO_SERVER` needed).
+
+### Option 4 — from your own backend / Java code
+
+Inside the Spring application you already have first-class access — don't open a second JDBC
+connection.
+
+**a. Use the existing repository.** `DumpFileRepository` (a Spring Data JPA
+`JpaRepository<DumpFileRecord, Long>`) is a bean you can inject anywhere:
+
+```java
+@Service
+class ReportingService {
+
+    private final DumpFileRepository dumps;
+
+    ReportingService(DumpFileRepository dumps) {
+        this.dumps = dumps;
+    }
+
+    long imported() {
+        return dumps.countByStatus(DumpStatus.IMPORTED);
+    }
+
+    List<DumpFileRecord> recentFailures() {
+        return dumps.findByStatusOrderByLastSeenAtDesc(DumpStatus.FAILED, Limit.of(20));
+    }
+}
+```
+
+Methods that already exist: `findByClientId`, `findByClientIdAndAbsolutePath`, `countByStatus`,
+`findByStatusOrderByLastSeenAtDesc`, plus the pipeline's `findClaimable` / `claim` /
+`reclaimStale` / `findChecksumSiblings`.
+
+**b. Add your own query** to that interface — JPQL against the entity, or native SQL:
+
+```java
+public interface DumpFileRepository extends JpaRepository<DumpFileRecord, Long> {
+
+    // JPQL — entity/field names
+    @Query("select r from DumpFileRecord r where r.clientId = :c and r.status = :s")
+    List<DumpFileRecord> byClientAndStatus(@Param("c") String clientId,
+                                           @Param("s") DumpStatus status);
+
+    // native SQL — real table/column names
+    @Query(value = "SELECT STATUS, COUNT(*) FROM DUMP_FILE GROUP BY STATUS",
+           nativeQuery = true)
+    List<Object[]> statusHistogram();
+}
+```
+
+**c. Drop to `JdbcTemplate`** for one-off SQL without an entity:
+
+```java
+@Component
+class DumpStats {
+    private final JdbcTemplate jdbc;
+    DumpStats(JdbcTemplate jdbc) { this.jdbc = jdbc; }   // auto-configured from the datasource
+
+    Map<String, Long> countByClient() {
+        return jdbc.query(
+            "SELECT CLIENT_ID, COUNT(*) c FROM DUMP_FILE GROUP BY CLIENT_ID",
+            rs -> {
+                Map<String, Long> out = new LinkedHashMap<>();
+                while (rs.next()) out.put(rs.getString("CLIENT_ID"), rs.getLong("c"));
+                return out;
+            });
+    }
+}
+```
+
+> Treat writes with care: the pipeline relies on the `STATUS` state machine and the `VERSION`
+> optimistic lock. Prefer the REST `retry` endpoint over hand-updating `STATUS`. Read-only queries
+> are always safe.
+
+### Useful queries
+
+```sql
+-- everything, newest first
+SELECT ID, CLIENT_ID, FILE_NAME, STATUS, SIZE_BYTES, ATTEMPT_COUNT, IMPORT_DURATION_MS
+FROM DUMP_FILE
+ORDER BY ID DESC;
+
+-- how many files in each state
+SELECT STATUS, COUNT(*) FROM DUMP_FILE GROUP BY STATUS ORDER BY 2 DESC;
+
+-- failures with the reason
+SELECT ID, CLIENT_ID, FILE_NAME, ATTEMPT_COUNT, LAST_ERROR_AT, LAST_ERROR
+FROM DUMP_FILE
+WHERE STATUS = 'FAILED'
+ORDER BY LAST_ERROR_AT DESC;
+
+-- rows currently claimed by a worker (in flight)
+SELECT ID, CLIENT_ID, FILE_NAME, STATUS, WORKER_ID, CLAIMED_AT
+FROM DUMP_FILE
+WHERE STATUS IN ('QUEUED', 'CHECKSUMMING', 'IMPORTING');
+
+-- duplicates and what they duplicate
+SELECT d.ID, d.FILE_NAME AS duplicate, o.FILE_NAME AS original, d.SHA256
+FROM DUMP_FILE d JOIN DUMP_FILE o ON o.ID = d.DUPLICATE_OF_ID
+WHERE d.STATUS = 'DUPLICATE';
+
+-- stuck in STABILIZING for over an hour (UTC clock)
+SELECT ID, CLIENT_ID, FILE_NAME, STABLE_SCAN_COUNT, FIRST_SEEN_AT, LAST_SEEN_AT
+FROM DUMP_FILE
+WHERE STATUS = 'STABILIZING'
+  AND FIRST_SEEN_AT < DATEADD('HOUR', -1, CURRENT_TIMESTAMP());
+
+-- inspect the schema itself
+SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'DUMP_FILE'
+ORDER BY ORDINAL_POSITION;
+```
+
+---
+
 ## Running as a Windows Service
 
 The application does not depend on any particular wrapper — use **WinSW**, **NSSM**, or the
@@ -744,6 +1008,14 @@ curl -s localhost:8080/actuator/health | jq
 
 # feed a file (upload convention)
 printf 'DATA%.0s' $(seq 1 1000) > <dir>/<name>.dmp.part && mv <dir>/<name>.dmp.part <dir>/<name>.dmp
+
+# open the metadata DB: browser -> http://localhost:8080/h2-console
+#   default profile URL: jdbc:h2:file:./data/oracle-import   (user sa, no password)
+#   dev profile URL:     jdbc:h2:mem:oracle-import
+# or the H2 shell against the file DB while the app runs:
+java -cp ~/.m2/repository/com/h2database/h2/2.4.240/h2-2.4.240.jar org.h2.tools.Shell \
+  -url "jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE" -user sa -password "" \
+  -sql "SELECT STATUS, COUNT(*) FROM DUMP_FILE GROUP BY STATUS"
 ```
 
 ---
@@ -757,6 +1029,10 @@ printf 'DATA%.0s' $(seq 1 1000) > <dir>/<name>.dmp.part && mv <dir>/<name>.dmp.p
 - Spring Boot Maven plugin (`spring-boot:run`, `repackage`): <https://docs.spring.io/spring-boot/maven-plugin/index.html>
 - Spring Boot Actuator (`/actuator/health`, `/actuator/loggers`): <https://docs.spring.io/spring-boot/reference/actuator/index.html>
 - Graceful shutdown: <https://docs.spring.io/spring-boot/reference/web/graceful-shutdown.html>
+- Spring Boot + H2 console / embedded databases: <https://docs.spring.io/spring-boot/reference/data/sql.html#data.sql.h2-web-console>
+- H2 database — features, URLs, `AUTO_SERVER`: <https://www.h2database.com/html/features.html>
+- H2 tools (`Shell`, `Console`): <https://www.h2database.com/html/tutorial.html#command_line_tools>
+- Spring Data JPA `@Query` / derived queries: <https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html>
 - Oracle Data Pump `impdp`: <https://docs.oracle.com/en/database/oracle/oracle-database/19/sutil/oracle-data-pump-import-utility.html>
 - Oracle `CREATE DIRECTORY`: <https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-DIRECTORY.html>
 - WinSW: <https://github.com/winsw/winsw> · NSSM: <https://nssm.cc/>
