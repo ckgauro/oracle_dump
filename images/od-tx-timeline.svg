@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+  <rect width="960" height="430" fill="#fbfcfd"/>
+  <text x="480" y="32" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2733">Transaction boundaries for one worker processing one dump</text>
+  <text x="480" y="53" text-anchor="middle" font-size="12" fill="#5b6b7b">DumpProcessor drives the sequence. The two long phases (hash, import) run OUTSIDE any DB transaction and row lock.</text>
+
+  <!-- legend -->
+  <rect x="300" y="66" width="16" height="12" fill="#cfe6d5" stroke="#7cb992"/>
+  <text x="322" y="76" font-size="11" fill="#41525f">short @Transactional step (milliseconds)</text>
+  <rect x="560" y="66" width="16" height="12" fill="#fde6c7" stroke="#e6b667"/>
+  <text x="582" y="76" font-size="11" fill="#41525f">no transaction (seconds → hours)</text>
+
+  <!-- timeline axis -->
+  <line x1="40" y1="250" x2="920" y2="250" stroke="#b9c4cc" stroke-width="1.5"/>
+  <text x="40" y="272" font-size="10.5" fill="#8a99a6">t = claim won</text>
+  <text x="920" y="272" font-size="10.5" fill="#8a99a6" text-anchor="end">terminal state written</text>
+
+  <!-- segments -->
+  <!-- beginChecksum -->
+  <rect x="44" y="150" width="120" height="96" rx="7" fill="#cfe6d5" stroke="#7cb992"/>
+  <text x="104" y="176" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1b2733">beginChecksum</text>
+  <text x="104" y="196" text-anchor="middle" font-size="10" fill="#3f5a48">re-stat file,</text>
+  <text x="104" y="209" text-anchor="middle" font-size="10" fill="#3f5a48">guard, →</text>
+  <text x="104" y="222" text-anchor="middle" font-size="10" fill="#3f5a48">CHECKSUMMING</text>
+
+  <!-- hash -->
+  <rect x="172" y="120" width="220" height="126" rx="7" fill="#fde6c7" stroke="#e6b667"/>
+  <text x="282" y="150" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1b2733">hash the file (SHA-256)</text>
+  <text x="282" y="170" text-anchor="middle" font-size="10" fill="#7a5a25">ChecksumService.hash() — streaming</text>
+  <text x="282" y="184" text-anchor="middle" font-size="10" fill="#7a5a25">20 GB UNC dump = 20 GB network I/O</text>
+  <text x="282" y="204" text-anchor="middle" font-size="10" fill="#7a5a25">reused if path+size+mtime unchanged</text>
+  <text x="282" y="228" text-anchor="middle" font-size="10" font-style="italic" fill="#a9741b">NO TX HELD</text>
+
+  <!-- completeChecksum -->
+  <rect x="400" y="150" width="132" height="96" rx="7" fill="#cfe6d5" stroke="#7cb992"/>
+  <text x="466" y="174" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1b2733">completeChecksum</text>
+  <text x="466" y="193" text-anchor="middle" font-size="10" fill="#3f5a48">store hash, de-dup</text>
+  <text x="466" y="206" text-anchor="middle" font-size="10" fill="#3f5a48">check → DUPLICATE</text>
+  <text x="466" y="219" text-anchor="middle" font-size="10" fill="#3f5a48">or → IMPORTING</text>
+
+  <!-- acquire permit -->
+  <rect x="540" y="162" width="96" height="84" rx="7" fill="#eef1f3" stroke="#c2ccd3"/>
+  <text x="588" y="188" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">acquire</text>
+  <text x="588" y="203" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">per-client</text>
+  <text x="588" y="218" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">permit</text>
+  <text x="588" y="233" text-anchor="middle" font-size="9" fill="#8a99a6">blocking, no TX</text>
+
+  <!-- run importer -->
+  <rect x="644" y="120" width="200" height="126" rx="7" fill="#fde6c7" stroke="#e6b667"/>
+  <text x="744" y="150" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1b2733">run importer</text>
+  <text x="744" y="170" text-anchor="middle" font-size="10" fill="#7a5a25">MockDumpImporter (works) or</text>
+  <text x="744" y="184" text-anchor="middle" font-size="10" fill="#7a5a25">OracleDataPumpImporter (TODO)</text>
+  <text x="744" y="204" text-anchor="middle" font-size="10" fill="#7a5a25">minutes → hours; output to log file</text>
+  <text x="744" y="228" text-anchor="middle" font-size="10" font-style="italic" fill="#a9741b">NO TX HELD</text>
+
+  <!-- record result -->
+  <rect x="852" y="150" width="64" height="96" rx="7" fill="#cfe6d5" stroke="#7cb992"/>
+  <text x="884" y="180" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">record</text>
+  <text x="884" y="195" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">Success /</text>
+  <text x="884" y="210" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1b2733">Failure</text>
+  <text x="884" y="228" text-anchor="middle" font-size="9" fill="#3f5a48">→ IMPORTED</text>
+
+  <!-- arrows between -->
+  <g stroke="#9aa7b1" stroke-width="1.4" fill="#9aa7b1">
+    <path d="M164 198 l10 0" marker-end="url(#a)"/>
+    <path d="M392 198 l10 0" marker-end="url(#a)"/>
+    <path d="M532 198 l10 0" marker-end="url(#a)"/>
+    <path d="M636 198 l10 0" marker-end="url(#a)"/>
+    <path d="M844 198 l10 0" marker-end="url(#a)"/>
+  </g>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z"/></marker>
+  </defs>
+
+  <!-- footnote -->
+  <rect x="40" y="300" width="880" height="104" rx="8" fill="#f4f7fb" stroke="#dbe3ec"/>
+  <text x="56" y="322" font-size="11.5" font-weight="700" fill="#2456b8">Why it matters</text>
+  <text x="56" y="342" font-size="11" fill="#41525f">• Holding a DB transaction across a multi-hour import would pin a connection and a row lock for hours — the pipeline avoids this by design.</text>
+  <text x="56" y="360" font-size="11" fill="#41525f">• If the JVM dies during either orange band, the row stays QUEUED/CHECKSUMMING/IMPORTING and is reclaimed to PENDING_IMPORT by StaleRecordReaper.</text>
+  <text x="56" y="378" font-size="11" fill="#41525f">• If no per-client permit is free, the worker requeues the row WITHOUT consuming a retry attempt. The permit is always released in a finally block.</text>
+  <text x="56" y="396" font-size="11" fill="#41525f">• ImportDispatcher uses TransactionTemplate (not @Transactional) so each findClaimable / claim is its own tiny transaction, dodging self-invocation traps.</text>
+</svg>

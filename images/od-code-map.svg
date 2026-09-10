@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+  <rect width="960" height="620" fill="#fbfcfd"/>
+  <text x="480" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1b2733">oracle_dump — codebase map (41 source files · ~3,580 lines · package com.demo.oracle_dump)</text>
+  <text x="480" y="56" text-anchor="middle" font-size="12" fill="#5b6b7b">Four runtime lanes. Each box: package · file count / lines · responsibility. Grey boxes = cross-cutting helpers.</text>
+
+  <!-- Lane: Discovery -->
+  <rect x="24" y="78" width="912" height="104" rx="10" fill="#eef4ff" stroke="#c7d9f7"/>
+  <text x="40" y="98" font-size="13" font-weight="700" fill="#2456b8">DISCOVERY LANE — 1 scheduler thread, one short TX per client</text>
+  <rect x="40" y="108" width="288" height="60" rx="8" fill="#ffffff" stroke="#a9c3ec"/>
+  <text x="52" y="128" font-size="12.5" font-weight="700" fill="#1b2733">scanner · 6 files / 397</text>
+  <text x="52" y="146" font-size="11.5" fill="#41525f">ScanScheduler → DirectoryScanner →</text>
+  <text x="52" y="161" font-size="11.5" fill="#41525f">ClientDirectoryScanner + FileStabilityChecker</text>
+  <rect x="340" y="108" width="284" height="60" rx="8" fill="#ffffff" stroke="#a9c3ec"/>
+  <text x="352" y="128" font-size="12.5" font-weight="700" fill="#1b2733">config · 4 files / 687</text>
+  <text x="352" y="146" font-size="11.5" fill="#41525f">OracleImportProperties (@ConfigurationProperties),</text>
+  <text x="352" y="161" font-size="11.5" fill="#41525f">ClientRegistry (1 Semaphore / client), Bootstrap</text>
+  <rect x="636" y="108" width="284" height="60" rx="8" fill="#ffffff" stroke="#a9c3ec"/>
+  <text x="648" y="128" font-size="12.5" font-weight="700" fill="#1b2733">domain · 4 files / 489</text>
+  <text x="648" y="146" font-size="11.5" fill="#41525f">DumpFileRecord entity, DumpStatus state table,</text>
+  <text x="648" y="161" font-size="11.5" fill="#41525f">DumpFileRepository (atomic claim / reclaim)</text>
+
+  <!-- Lane: Dispatch -->
+  <rect x="24" y="196" width="912" height="86" rx="10" fill="#eefaf0" stroke="#c3e6cd"/>
+  <text x="40" y="216" font-size="13" font-weight="700" fill="#1f7a3d">DISPATCH LANE — 1 scheduler thread, TransactionTemplate per claim</text>
+  <rect x="40" y="226" width="440" height="44" rx="8" fill="#ffffff" stroke="#aed9bd"/>
+  <text x="52" y="245" font-size="12.5" font-weight="700" fill="#1b2733">processing/ImportDispatcher</text>
+  <text x="52" y="261" font-size="11.5" fill="#41525f">free-capacity math → atomic status-guarded UPDATE → submit</text>
+  <rect x="492" y="226" width="428" height="44" rx="8" fill="#ffffff" stroke="#aed9bd"/>
+  <text x="504" y="245" font-size="12.5" font-weight="700" fill="#1b2733">processing/StaleRecordReaper</text>
+  <text x="504" y="261" font-size="11.5" fill="#41525f">resets abandoned in-flight rows; full sweep at startup</text>
+
+  <!-- Lane: Import -->
+  <rect x="24" y="296" width="912" height="126" rx="10" fill="#fff6ea" stroke="#f2ddb9"/>
+  <text x="40" y="316" font-size="13" font-weight="700" fill="#a9741b">IMPORT LANE — bounded ThreadPoolTaskExecutor (core = max = maxWorkers), slow phases hold NO DB transaction</text>
+  <rect x="40" y="326" width="288" height="84" rx="8" fill="#ffffff" stroke="#eccf9d"/>
+  <text x="52" y="345" font-size="12.5" font-weight="700" fill="#1b2733">processing · 8 files / 765</text>
+  <text x="52" y="362" font-size="11.5" fill="#41525f">DumpProcessor (orchestrates 1 row),</text>
+  <text x="52" y="377" font-size="11.5" fill="#41525f">ProcessingSteps (@Transactional steps),</text>
+  <text x="52" y="392" font-size="11.5" fill="#41525f">ChecksumService, RetryPolicy, ImportLogPaths</text>
+  <rect x="340" y="326" width="288" height="84" rx="8" fill="#ffffff" stroke="#eccf9d"/>
+  <text x="352" y="345" font-size="12.5" font-weight="700" fill="#1b2733">importer · 6 files / 390</text>
+  <text x="352" y="362" font-size="11.5" fill="#41525f">DumpImporter (strategy), ImporterConfig,</text>
+  <text x="352" y="377" font-size="11.5" fill="#41525f">MockDumpImporter (default, works),</text>
+  <text x="352" y="392" font-size="11.5" fill="#b3401f">OracleDataPumpImporter (.importDump = TODO)</text>
+  <rect x="640" y="326" width="280" height="84" rx="8" fill="#ffffff" stroke="#eccf9d"/>
+  <text x="652" y="345" font-size="12.5" font-weight="700" fill="#1b2733">staging · 1 file / 37</text>
+  <text x="652" y="362" font-size="11.5" fill="#b3401f">DumpStagingService — interface only,</text>
+  <text x="652" y="377" font-size="11.5" fill="#41525f">no implementation. Seam for the future</text>
+  <text x="652" y="392" font-size="11.5" fill="#41525f">share → Oracle DIRECTORY staging copy</text>
+
+  <!-- Lane: Cross-cutting -->
+  <rect x="24" y="436" width="912" height="160" rx="10" fill="#f1f3f5" stroke="#d9dee3"/>
+  <text x="40" y="456" font-size="13" font-weight="700" fill="#40515e">CROSS-CUTTING</text>
+  <rect x="40" y="466" width="216" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="52" y="485" font-size="12" font-weight="700" fill="#1b2733">lifecycle · 2 / 126</text>
+  <text x="52" y="502" font-size="11" fill="#41525f">SmartLifecycle graceful drain;</text>
+  <text x="52" y="514" font-size="11" fill="#41525f">PipelineState acceptingWork flag</text>
+  <rect x="266" y="466" width="216" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="278" y="485" font-size="12" font-weight="700" fill="#1b2733">oracle · 2 / 138</text>
+  <text x="278" y="502" font-size="11" fill="#41525f">OracleClientValidator — startup</text>
+  <text x="278" y="514" font-size="11" fill="#41525f">.exe exists / readable / executable</text>
+  <rect x="492" y="466" width="216" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="504" y="485" font-size="12" font-weight="700" fill="#1b2733">health · 2 / 129</text>
+  <text x="504" y="502" font-size="11" fill="#41525f">dumpDirectories (cached 10s),</text>
+  <text x="504" y="514" font-size="11" fill="#41525f">oracleClient indicators</text>
+  <rect x="718" y="466" width="202" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="730" y="485" font-size="12" font-weight="700" fill="#1b2733">api · 2 / 126</text>
+  <text x="730" y="502" font-size="11" fill="#41525f">StatusController + read model;</text>
+  <text x="730" y="514" font-size="11" fill="#41525f">/api/status /api/dumps /retry</text>
+  <rect x="40" y="528" width="284" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="52" y="547" font-size="12" font-weight="700" fill="#1b2733">io · 2 files / 169</text>
+  <text x="52" y="564" font-size="11" fill="#41525f">WindowsPaths (UNC-aware normalise),</text>
+  <text x="52" y="576" font-size="11" fill="#41525f">IoFailure (retryable / permanent rule list)</text>
+  <rect x="334" y="528" width="284" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="346" y="547" font-size="12" font-weight="700" fill="#1b2733">support · 1 file / 104</text>
+  <text x="346" y="564" font-size="11" fill="#41525f">Retry — tiny fluent in-call retry helper</text>
+  <text x="346" y="576" font-size="11" fill="#41525f">(not the durable pipeline retry)</text>
+  <rect x="628" y="528" width="292" height="52" rx="8" fill="#ffffff" stroke="#d0d7dd"/>
+  <text x="640" y="547" font-size="12" font-weight="700" fill="#1b2733">test · 10 files / ~680 · 40 tests (1 skipped)</text>
+  <text x="640" y="564" font-size="11" fill="#41525f">9 focused unit suites + PipelineIntegrationTest</text>
+  <text x="640" y="576" font-size="11" fill="#41525f">(@SpringBootTest, end-to-end, 5 scenarios)</text>
+</svg>

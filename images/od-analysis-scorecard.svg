@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+  <rect width="960" height="560" fill="#fbfcfd"/>
+  <text x="480" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1b2733">oracle_dump — analysis scorecard</text>
+  <text x="480" y="55" text-anchor="middle" font-size="12" fill="#5b6b7b">What the code actually delivers today vs. what is deliberately left open. Nothing below is a hidden bug — the gaps are declared in CLAUDE.md.</text>
+
+  <!-- Left column: strengths -->
+  <rect x="24" y="72" width="452" height="466" rx="10" fill="#eefaf0" stroke="#c3e6cd"/>
+  <text x="44" y="96" font-size="14" font-weight="700" fill="#1f7a3d">IMPLEMENTED &amp; TESTED</text>
+  <g font-size="11.5" fill="#2f4636">
+    <text x="44" y="122">✔  Discovery: NIO DirectoryStream scan, per-client TX isolation,</text>
+    <text x="60" y="137">    *.part/*.tmp/*.partial/*.copying ignored, vanish detection</text>
+    <text x="44" y="158">✔  File stability: pure function, N stable scans + quiet-period gate</text>
+    <text x="44" y="179">✔  Streaming SHA-256 with configurable buffer; stored-hash reuse</text>
+    <text x="44" y="200">✔  Duplicate short-circuit on (client_id, sha256)</text>
+    <text x="44" y="221">✔  Explicit DumpStatus state machine, illegal jumps throw</text>
+    <text x="44" y="242">✔  Bounded worker pool + per-client fair Semaphore + back-pressure</text>
+    <text x="44" y="263">✔  Atomic status-guarded claim UPDATE + @Version optimistic lock</text>
+    <text x="44" y="284">✔  Slow work runs outside any DB transaction (TransactionTemplate)</text>
+    <text x="44" y="305">✔  Exponential backoff with ceiling; retryable vs permanent errors</text>
+    <text x="44" y="326">✔  Crash recovery: StaleRecordReaper + full startup sweep</text>
+    <text x="44" y="347">✔  Windows IO-error classification (IoFailure rule list)</text>
+    <text x="44" y="368">✔  UNC-aware path normalisation (WindowsPaths)</text>
+    <text x="44" y="389">✔  Graceful shutdown drain (SmartLifecycle, high phase)</text>
+    <text x="44" y="410">✔  Startup Oracle .exe validation + 2 Actuator health indicators</text>
+    <text x="44" y="431">✔  REST: /api/status, /api/dumps, POST /api/dumps/{id}/retry</text>
+    <text x="44" y="452">✔  Mock importer writes a realistic Data Pump-style transcript</text>
+    <text x="44" y="473">✔  impdp command construction: discrete args, no cmd.exe,</text>
+    <text x="60" y="488">    child-only ORACLE_HOME / TNS_ADMIN, no password logging</text>
+    <text x="44" y="509">✔  40 automated tests incl. end-to-end PipelineIntegrationTest</text>
+    <text x="44" y="530">✔  Config validated via @ConfigurationProperties + @Validated</text>
+  </g>
+
+  <!-- Right column: gaps -->
+  <rect x="488" y="72" width="448" height="466" rx="10" fill="#fff6ea" stroke="#f2ddb9"/>
+  <text x="508" y="96" font-size="14" font-weight="700" fill="#a9741b">DEFERRED / RISKS / TO WIRE UP</text>
+  <g font-size="11.5" fill="#5f4a24">
+    <text x="508" y="122">▲  OracleDataPumpImporter.importDump() throws</text>
+    <text x="524" y="137">    UnsupportedOperationException — no real impdp launch (CLAUDE.md §10)</text>
+    <text x="508" y="160">▲  DumpStagingService — interface only, no implementation (§15–§16)</text>
+    <text x="508" y="183">▲  Credential resolution (database-connection-name → secret</text>
+    <text x="524" y="198">    store) is a TODO comment; nothing reads a vault yet</text>
+    <text x="508" y="221">▲  Persistence: ddl-auto: update, no Flyway/Liquibase migrations</text>
+    <text x="508" y="244">▲  H2 file DB is single-writer — multi-instance needs a real RDBMS</text>
+    <text x="524" y="259">    even though the claim protocol is already multi-instance-safe</text>
+    <text x="508" y="282">▲  import-timeout config exists but is not enforced (no process</text>
+    <text x="524" y="297">    to kill until the real importer lands)</text>
+    <text x="508" y="320">▲  No archive / move / delete of imported dumps (intentional, §23)</text>
+    <text x="508" y="343">▲  H2 web console enabled in the default profile — turn off in prod</text>
+    <text x="508" y="366">▲  Metrics exposed via Actuator, but no Prometheus/Grafana wiring</text>
+    <text x="508" y="389">▲  Lombok is a declared dependency but effectively unused</text>
+    <text x="508" y="412">▲  Real Windows / UNC behaviour is only simulated on macOS/Linux CI;</text>
+    <text x="524" y="427">    one WindowsPaths test is skipped off-Windows</text>
+    <text x="508" y="450">▲  No authn/z on the REST endpoints (assumes a trusted network)</text>
+    <text x="508" y="473">▲  Scanner lists a whole directory each cycle — fine for hundreds</text>
+    <text x="524" y="488">    of files, revisit for very large directories</text>
+  </g>
+</svg>
