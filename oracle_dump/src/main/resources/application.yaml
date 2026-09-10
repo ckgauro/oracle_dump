@@ -3,7 +3,8 @@ spring:
     name: oracle_dump
   datasource:
     # Windows Server production: keep this on LOCAL disk (e.g. D:/OracleImporter/data), never a share (CLAUDE.md §19).
-    url: jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE
+    # H2 2.3+ rejects AUTO_SERVER=TRUE together with DB_CLOSE_ON_EXIT=FALSE (mixed mode needs the shutdown hook).
+    url: jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE
     username: sa
     password: ""
     driver-class-name: org.h2.Driver
