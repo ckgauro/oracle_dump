@@ -549,10 +549,14 @@ shows up in the code:
 | Deployable as a service | `SmartLifecycle` drain; no dependency on WinSW/NSSM specifically (`CLAUDE.md` §20) |
 | Don't delete the dump after import | there is simply no delete/move code — the original is left untouched (`CLAUDE.md` §23) |
 
-> **NOTE — running on macOS/Linux for development.** On a non-Windows JVM the `oracle-client` paths
-> (`C:\Oracle\...`) obviously don't exist; in `mock` mode that is a harmless `WARN` at startup and
-> nothing else. One `WindowsPaths` test is `@DisabledOnOs(WINDOWS)` / its pair is
-> `@EnabledOnOs(WINDOWS)`, which is why the suite reports "1 skipped" off Windows.
+> **NOTE — running on macOS/Linux for development.** The **default** and **`windows`** profiles
+> both point `oracle-client` at `C:\Oracle\...`, which obviously doesn't exist on a non-Windows JVM;
+> in `mock` mode that is a harmless `WARN` at startup and nothing else. The **`dev`** profile
+> instead repoints `oracle-client` at a real local path
+> (`/Users/chandragauro/temp/oracle/...`) so the paths resolve on this developer's Mac — edit that
+> block in `application.yaml` if you're on a different machine. One `WindowsPaths` test is
+> `@DisabledOnOs(WINDOWS)` / its pair is `@EnabledOnOs(WINDOWS)`, which is why the suite reports
+> "1 skipped" off Windows.
 
 ---
 
@@ -617,11 +621,16 @@ oracle-import:
 
 **Profiles shipped:**
 
-| Profile | Datasource | Clients | Use |
-|---|---|---|---|
-| default (`application.yaml`) | file H2 `./data/oracle-import` | none | safe baseline; mock |
-| `dev` (`application-dev.yaml`) | in-memory H2 | `client-a`, `client-b` under `./var/oracle-dumps/*` (auto-created) | local runs; fast timings; `DEBUG` logging |
-| test (`src/test/resources`) | in-memory H2 | none | schedulers **disabled** so tests drive `scanAll()` / `dispatch()` deterministically |
+| Profile | File | Datasource | `oracle-client` | Clients | Use |
+|---|---|---|---|---|---|
+| default | `application.yaml` (base document) | file H2 `./data/oracle-import` | `C:/Oracle/...` | none | safe baseline; mock |
+| `dev` | `application.yaml` (second `---` document, `spring.config.activate.on-profile: dev`) | in-memory H2 | `/Users/chandragauro/temp/oracle/...` (Mac path) | `client-a`, `client-b` under `/Users/chandragauro/temp/oracle-dumps/*` (auto-created) | local runs; fast timings; `DEBUG` logging |
+| `windows` | `application-windows.yaml` | (inherits default's file H2) | `C:/Oracle/...` (same as default) | example UNC share + `D:` client | explicit switch to Windows paths, symmetric with `dev` |
+| test | `src/test/resources` | in-memory H2 | — | none | schedulers **disabled** so tests drive `scanAll()` / `dispatch()` deterministically |
+
+> **NOTE — the `dev` profile's paths are machine-specific.** They point at this developer's own Mac
+> home directory (`/Users/chandragauro/temp/...`), not a portable repo-relative path. Anyone running
+> `dev` on a different machine should edit those values in `application.yaml` first.
 
 > **NOTE — `dump-directory` vs `oracle-directory-name`.** The first is where **Spring Boot** looks
 > for files. The second names an Oracle `DIRECTORY` object the **database** reads through. They are
@@ -779,12 +788,15 @@ cd oracle_dump
 # run all 40 tests
 ./mvnw test                     # mvnw.cmd on Windows
 
-# dev profile: in-memory H2, ./var/oracle-dumps/client-a & client-b auto-created, mock importer
+# dev profile: in-memory H2, /Users/chandragauro/temp/oracle-dumps/client-a & client-b auto-created, mock importer
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-#   then drop a .dmp into ./var/oracle-dumps/client-a and watch the logs / GET /api/status
+#   then drop a .dmp into that client-a folder and watch the logs / GET /api/status
 
 # default profile: file-based H2, no clients configured (safe baseline)
 ./mvnw spring-boot:run
+
+# windows profile: same Windows paths as default, chosen explicitly (see application-windows.yaml)
+./mvnw spring-boot:run -Dspring-boot.run.profiles=windows
 ```
 
 Requirements: **JDK 25**, port **8080** free. An Oracle client is needed **only** for

@@ -639,9 +639,19 @@ oracle-import:
 > **NOTE — mapped drives.** A Windows Service does not inherit a logged-in user's `Z:` mapping.
 > Always configure a UNC path (`\\server\share\...`) for production (`CLAUDE.md` §2).
 
-Profiles: `application.yaml` (file-based H2, no clients, mock) is the safe default;
-`application-dev.yaml` (in-memory H2, two local clients auto-created, fast timings) is for local
-runs; `src/test/resources/application.yaml` disables the schedulers so tests drive the pipeline
+Profiles: the **default** document in `application.yaml` (file-based H2, `oracle-client` pointed at
+`C:/Oracle/...`, no clients, mock) is the safe baseline. Two more profile-specific documents/files
+layer on top of it:
+
+- **`dev`** — a second YAML document inside the same `application.yaml`, separated by `---` and
+  activated with `spring.config.activate.on-profile: dev`. In-memory H2, `oracle-client` repointed
+  at a local Mac path (`/Users/chandragauro/temp/oracle/...`), and two local clients
+  (`/Users/chandragauro/temp/oracle-dumps/client-a` / `client-b`) auto-created on startup.
+- **`windows`** — a separate file, `application-windows.yaml`, that explicitly re-declares the same
+  `C:/Oracle/...` paths and example UNC/`D:` clients as the default, so switching between `dev`
+  (Mac) and `windows` is a one-flag choice instead of relying on "no profile = Windows".
+
+`src/test/resources/application.yaml` disables the schedulers so tests drive the pipeline
 deterministically.
 
 ---
