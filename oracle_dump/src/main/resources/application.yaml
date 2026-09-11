@@ -2,8 +2,6 @@ spring:
   application:
     name: oracle_dump
   datasource:
-    # Windows Server production: keep this on LOCAL disk (e.g. D:/OracleImporter/data), never a share (CLAUDE.md §19).
-    # H2 2.3+ rejects AUTO_SERVER=TRUE together with DB_CLOSE_ON_EXIT=FALSE (mixed mode needs the shutdown hook).
     url: jdbc:h2:file:./data/oracle-import;AUTO_SERVER=TRUE
     username: sa
     password: ""
@@ -34,7 +32,6 @@ management:
     health:
       show-details: always
   health:
-    # Our custom indicators; keep them lightweight (CLAUDE.md §28).
     dumpDirectories:
       enabled: true
     oracleClient:
@@ -42,29 +39,30 @@ management:
 
 logging:
   level:
-    com.demo.oracle_dump: INFO
+    com.demo.oracle_dump: DEBUG
 
 # ---------------------------------------------------------------------------
-# Oracle dump import pipeline
+# Oracle dump import pipeline — configured for local development on this Mac.
 # ---------------------------------------------------------------------------
 oracle-import:
 
   scanner:
     enabled: true
-    interval: 30s
+    interval: 10s
     initial-delay: 5s
-    stable-file-check-delay: 30s
+    stable-file-check-delay: 5s
     stable-scans-required: 2
     ignore-suffixes: [".part", ".tmp", ".partial", ".copying"]
     dump-suffixes: [".dmp"]
+    create-missing-directories: true
 
   processing:
     enabled: true
     max-workers: 4
-    poll-interval: 10s
+    poll-interval: 5s
     stale-processing-timeout: 2h
     max-attempts: 5
-    retry-backoff: 1m
+    retry-backoff: 15s
     retry-backoff-max: 1h
     dispatch-batch-size: 50
     shutdown-grace-period: 2m
@@ -74,71 +72,6 @@ oracle-import:
     buffer-size-mb: 8
 
   oracle-client:
-    # Windows .exe paths. Prefer forward slashes in YAML (CLAUDE.md §1, §9).
-    impdp-path: "C:/Oracle/product/19c/client_1/bin/impdp.exe"
-    imp-path: "C:/Oracle/product/19c/client_1/bin/imp.exe"
-    sqlplus-path: "C:/Oracle/product/19c/client_1/bin/sqlplus.exe"
-    oracle-home: "C:/Oracle/product/19c/client_1"
-    tns-admin: "C:/Oracle/network/admin"
-    validate-on-startup: true
-    fail-startup-on-missing-executable: false
-
-  importer:
-    # mock | impdp | imp   -- real modes are TODO (CLAUDE.md §10); mock is safe everywhere.
-    mode: mock
-    mock-duration: 2s
-    import-log-root: "./logs/imports"
-    import-timeout: 6h
-
-  # Configure one block per tenant. Local Windows path OR UNC share; never a mapped drive for a service.
-  clients: []
-  #  - client-id: client-a
-  #    enabled: true
-  #    dump-directory: "//nas01/oracle-dumps/client-a"
-  #    source-schema: APP
-  #    target-schema: CLIENT_A
-  #    oracle-directory-name: CLIENT_A_IMPORT_DIR
-  #    database-connection-name: production-oracle
-  #    max-parallel-imports: 1
-  #  - client-id: client-b
-  #    enabled: true
-  #    dump-directory: "D:/OracleDumps/ClientB"
-  #    target-schema: CLIENT_B
-  #    oracle-directory-name: CLIENT_B_IMPORT_DIR
-  #    max-parallel-imports: 1
-
-# ---------------------------------------------------------------------------
-# dev profile: local development on Mac/Linux.
-# Activate with SPRING_PROFILES_ACTIVE=dev (or -Dspring-boot.run.profiles=dev,
-# or IntelliJ's "Active profiles" field). Uses an in-memory DB and a local
-# scan directory that is created on startup so you can drop .dmp files into
-# ./var/oracle-dumps/client-a and watch the pipeline pick them up.
-# ---------------------------------------------------------------------------
----
-spring:
-  config:
-    activate:
-      on-profile: dev
-  datasource:
-    url: jdbc:h2:mem:oracle-import;DB_CLOSE_DELAY=-1
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-
-logging:
-  level:
-    com.demo.oracle_dump: DEBUG
-
-oracle-import:
-  scanner:
-    interval: 10s
-    stable-file-check-delay: 5s
-    create-missing-directories: true
-  processing:
-    poll-interval: 5s
-    retry-backoff: 15s
-  oracle-client:
-    # Mac local dev paths — override the Windows defaults above.
     impdp-path: "/Users/chandragauro/temp/oracle/bin/impdp"
     imp-path: "/Users/chandragauro/temp/oracle/bin/imp"
     sqlplus-path: "/Users/chandragauro/temp/oracle/bin/sqlplus"
@@ -146,9 +79,13 @@ oracle-import:
     tns-admin: "/Users/chandragauro/temp/oracle/network/admin"
     validate-on-startup: true
     fail-startup-on-missing-executable: false
+
   importer:
     mode: mock
     mock-duration: 3s
+    import-log-root: "./logs/imports"
+    import-timeout: 6h
+
   clients:
     - client-id: client-a
       enabled: true
