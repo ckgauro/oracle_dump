@@ -18,6 +18,9 @@ screenshot from a real run. Images live in [`images/`](images/).
 - [Step 1 — Get the code](#step-1--get-the-code)
 - [Step 2 — Build and run the tests](#step-2--build-and-run-the-tests)
 - [Step 3 — Start the service](#step-3--start-the-service)
+  - [Option A — local development (`dev`)](#option-a--local-development-use-this-for-your-first-run)
+  - [Option B — run the built jar (default)](#option-b--run-the-built-jar-closer-to-production-optional)
+  - [Option C — the `windows` profile](#option-c--the-windows-profile-explicit-switch-same-as-the-default)
 - [Step 4 — Verify it is healthy](#step-4--verify-it-is-healthy)
 - [Step 5 — Drop a dump file](#step-5--drop-a-dump-file)
 - [Step 6 — Watch it get imported](#step-6--watch-it-get-imported)
@@ -51,9 +54,11 @@ screenshot from a real run. Images live in [`images/`](images/).
 | Ports | **8080** free (REST + Actuator) | — |
 | Oracle client | **only for `importer.mode: impdp`/`imp`** — not needed for the default `mock` mode | `impdp -help` |
 
-> **NOTE:** On macOS/Linux the `oracle-client` paths in the config point at `C:\Oracle\...`, which
-> obviously don't exist. In `mock` mode that produces a harmless `WARN` at startup and nothing
-> else. It is not an error.
+> **NOTE:** The **default** (no-profile) and **`windows`** profiles both point `oracle-client` at
+> `C:\Oracle\...`, which obviously doesn't exist on macOS/Linux. In `mock` mode that produces a
+> harmless `WARN` at startup and nothing else — it is not an error. The **`dev`** profile instead
+> points `oracle-client` at `/Users/chandragauro/temp/oracle/...` (this developer's Mac) — if
+> you're on a different machine, edit the `dev` block in `application.yaml` to match your own path.
 
 ---
 
@@ -63,7 +68,8 @@ screenshot from a real run. Images live in [`images/`](images/).
 cd <your workspace>
 # the Maven project is in the oracle_dump/ subfolder of the repo
 cd oracle_dump/oracle_dump
-ls    # you should see: pom.xml  src/  mvnw  application*.yaml under src/main/resources
+ls    # you should see: pom.xml  src/  mvnw  application.yaml and application-windows.yaml
+      # under src/main/resources
 ```
 
 ---
@@ -192,9 +198,14 @@ The `dev` profile deliberately makes things easy:
 - it **auto-creates** two folders for you to drop files into:
 
   ```text
-  ./var/oracle-dumps/client-a     (imports 1 file at a time)
-  ./var/oracle-dumps/client-b     (imports up to 2 files at a time)
+  /Users/chandragauro/temp/oracle-dumps/client-a     (imports 1 file at a time)
+  /Users/chandragauro/temp/oracle-dumps/client-b     (imports up to 2 files at a time)
   ```
+
+> **NOTE:** These are **absolute, machine-specific paths** — the `dev` profile in this repo is
+> configured for this developer's Mac. If you're running it on a different machine, edit the
+> `dump-directory` values under the `dev` profile block in `application.yaml` to point somewhere
+> that exists on your machine.
 
 #### How to tell it started correctly
 
@@ -246,6 +257,22 @@ This uses the **default** profile, not `dev`: the database is a **file** on disk
 **nothing is scanned** until you add client entries to a config file. See
 [architecture.md §12](architecture.md#12-configuration-reference) for the config format. Stick with
 Option A until you need this.
+
+### Option C — the `windows` profile (explicit switch, same as the default)
+
+`src/main/resources/application-windows.yaml` holds the same Windows `oracle-client` paths and
+example clients (a UNC share and a local `D:` path, from `CLAUDE.md` §26) that the **default**
+profile already uses. It exists so you can switch between `dev` (Mac) and `windows` explicitly by
+name, instead of relying on "no profile = Windows":
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=windows
+```
+
+On macOS/Linux the example clients point at paths (`//nas01/...`, `D:/OracleDumps/ClientB`) that
+don't exist, so nothing will actually be scanned — this profile is mainly useful for validating
+config wiring before deploying to a real Windows Server, or as a starting point to edit with your
+real UNC share / local drive paths.
 
 ---
 
@@ -328,18 +355,16 @@ something incomplete. Two safeguards prevent that:
 2. So the safe pattern is: **write to `name.dmp.part`, then rename to `name.dmp`** once the write
    is finished. A rename is instant, so the scanner only ever sees a complete file.
 
-### 5.2 — Create a test file (macOS / Linux)
-
-Run this in the project folder (the one with `pom.xml`, so the relative path below resolves):
+### 5.2 — Create a test file (macOS / Linux, `dev` profile)
 
 ```bash
 # 1. write a ~7 KB file with a temporary name the scanner ignores
 printf 'PAYLOAD%.0s' $(seq 1 1000) \
-  > var/oracle-dumps/client-a/clienta_2026_09.dmp.part
+  > /Users/chandragauro/temp/oracle-dumps/client-a/clienta_2026_09.dmp.part
 
 # 2. rename it into place — now the scanner will pick it up
-mv var/oracle-dumps/client-a/clienta_2026_09.dmp.part \
-   var/oracle-dumps/client-a/clienta_2026_09.dmp
+mv /Users/chandragauro/temp/oracle-dumps/client-a/clienta_2026_09.dmp.part \
+   /Users/chandragauro/temp/oracle-dumps/client-a/clienta_2026_09.dmp
 ```
 
 - `printf 'PAYLOAD%.0s' $(seq 1 1000)` just prints the word `PAYLOAD` 1000 times — a quick way to
@@ -347,20 +372,28 @@ mv var/oracle-dumps/client-a/clienta_2026_09.dmp.part \
 - `>` writes that output to the file.
 - `mv old new` renames it.
 
-### 5.3 — Create a test file (Windows PowerShell)
+> If you edited the `dev` profile's `dump-directory` paths to somewhere else on your machine (see
+> the note in [Step 3](#step-3--start-the-service)), substitute that path here instead.
+
+### 5.3 — Create a test file (Windows, `windows` profile)
+
+The `windows` profile (Option C, Step 3) ships with placeholder example paths (a UNC share and a
+`D:` drive) that won't exist on a fresh machine. Edit `application-windows.yaml`'s `clients` block
+to a real local folder first, then drop a file the same way:
 
 ```powershell
-"PAYLOAD" * 1000 > var\oracle-dumps\client-a\clienta_2026_09.dmp.part
-Rename-Item var\oracle-dumps\client-a\clienta_2026_09.dmp.part clienta_2026_09.dmp
+"PAYLOAD" * 1000 > D:\OracleDumps\ClientB\clientb_2026_09.dmp.part
+Rename-Item D:\OracleDumps\ClientB\clientb_2026_09.dmp.part clientb_2026_09.dmp
 ```
 
-You can also just **copy any existing file** into `var\oracle-dumps\client-a\` and rename its
-extension to `.dmp` — the mechanism is the same.
+You can also just **copy any existing file** into the configured folder and rename its extension
+to `.dmp` — the mechanism is the same.
 
 ### 5.4 — Which folder?
 
-The `dev` profile created two: `var/oracle-dumps/client-a` and `var/oracle-dumps/client-b`. Use
-either. The filename doesn't matter, but it must end in `.dmp`.
+The `dev` profile (Step 3, Option A) auto-creates two folders under
+`/Users/chandragauro/temp/oracle-dumps/` — `client-a` and `client-b`. Use either. The filename
+doesn't matter, but it must end in `.dmp`.
 
 > **NOTE — how this looks with real uploads.** Point your export/backup job at
 > `\\nas01\oracle-dumps\client-a\<name>.dmp.part` and have it rename to `.dmp` when the copy
@@ -417,7 +450,7 @@ full `STABILIZING` wait — that timing is deliberate, not a function of size.
 `[mock] imported …` → `Imported record 1 …`.*
 
 > **If nothing happens after a minute:** check the filename really ends in `.dmp` (not `.dmp.part`),
-> that it's in `var/oracle-dumps/client-a` or `.../client-b`, and that the scanner is enabled in
+> that it's in `/Users/chandragauro/temp/oracle-dumps/client-a` or `.../client-b`, and that the scanner is enabled in
 > the Step 3 log. See [Troubleshooting](#troubleshooting).
 
 ---
@@ -489,12 +522,12 @@ are marked `DUPLICATE` and skipped: no import runs, no log file is written.
 
 ```bash
 # first file — let it finish importing
-printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > var/oracle-dumps/client-a/dupe_first.dmp
+printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > /Users/chandragauro/temp/oracle-dumps/client-a/dupe_first.dmp
 
 #   ... watch /api/status until dupe_first.dmp reaches IMPORTED ...
 
 # second file — different name, identical content
-printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > var/oracle-dumps/client-a/dupe_second.dmp
+printf 'PAYLOAD-ALPHA%.0s' $(seq 1 300) > /Users/chandragauro/temp/oracle-dumps/client-a/dupe_second.dmp
 ```
 
 Note these use `>` directly (no `.part` rename) just to keep the example short — the `.part`
@@ -546,7 +579,7 @@ attempt count so you don't wait long:
 Then drop a file:
 
 ```bash
-printf 'DATA%.0s' $(seq 1 1200) > var/oracle-dumps/client-a/needs_oracle.dmp
+printf 'DATA%.0s' $(seq 1 1200) > /Users/chandragauro/temp/oracle-dumps/client-a/needs_oracle.dmp
 ```
 
 ### 9.3 — What you'll see
@@ -946,6 +979,11 @@ The application does not depend on any particular wrapper — use **WinSW**, **N
          max-parallel-imports: 1
    ```
 
+   This is the same shape as `src/main/resources/application-windows.yaml` (see
+   [Step 3, Option C](#step-3--start-the-service)) — that file is a convenient starting point:
+   copy its `oracle-import` block into `application.yml` and replace the example paths with your
+   real UNC share / Oracle client install.
+
 5. Install & start:
 
    ```bat
@@ -989,10 +1027,13 @@ curl -s -X POST localhost:8080/actuator/loggers/com.demo.oracle_dump \
 # build + test
 ./mvnw clean verify
 
-# run (dev: in-memory DB, local dirs auto-created, mock importer)
+# run (dev: in-memory DB, local dirs auto-created under /Users/chandragauro/temp, mock importer)
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
-# run the jar
+# run (windows: explicit switch, same Windows paths as the default profile)
+./mvnw spring-boot:run -Dspring-boot.run.profiles=windows
+
+# run the jar (default profile — Windows paths, file DB, clients: [] until configured)
 java -jar target/oracle_dump-0.0.1-SNAPSHOT.jar
 
 # status / inventory

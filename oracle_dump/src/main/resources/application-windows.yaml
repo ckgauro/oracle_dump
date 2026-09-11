@@ -1,0 +1,38 @@
+# windows profile: Windows Server target environment.
+# Activate with SPRING_PROFILES_ACTIVE=windows (or -Dspring-boot.run.profiles=windows,
+# or IntelliJ's "Active profiles" field).
+#
+# Mirrors the production defaults already in application.yaml (base document), but as
+# an explicit profile so you can switch between "dev" (Mac) and "windows" the same way.
+spring:
+  config:
+    activate:
+      on-profile: windows
+
+oracle-import:
+  oracle-client:
+    # Windows .exe paths. Prefer forward slashes in YAML (CLAUDE.md §1, §9).
+    impdp-path: "C:/Oracle/product/19c/client_1/bin/impdp.exe"
+    imp-path: "C:/Oracle/product/19c/client_1/bin/imp.exe"
+    sqlplus-path: "C:/Oracle/product/19c/client_1/bin/sqlplus.exe"
+    oracle-home: "C:/Oracle/product/19c/client_1"
+    tns-admin: "C:/Oracle/network/admin"
+    validate-on-startup: true
+    fail-startup-on-missing-executable: false
+
+  # Local Windows path OR UNC share; never a mapped drive for a service (CLAUDE.md "Important Windows Rule").
+  clients:
+    - client-id: client-a
+      enabled: true
+      dump-directory: "//nas01/oracle-dumps/client-a"
+      source-schema: APP
+      target-schema: CLIENT_A
+      oracle-directory-name: CLIENT_A_IMPORT_DIR
+      database-connection-name: production-oracle
+      max-parallel-imports: 1
+    - client-id: client-b
+      enabled: true
+      dump-directory: "D:/OracleDumps/ClientB"
+      target-schema: CLIENT_B
+      oracle-directory-name: CLIENT_B_IMPORT_DIR
+      max-parallel-imports: 1
