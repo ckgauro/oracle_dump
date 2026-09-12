@@ -8,11 +8,11 @@ import java.util.stream.Collectors;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.config.OracleImportProperties.Importer.Mode;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Validates the configured Oracle client executables once the context is ready (CLAUDE.md §13), so a
@@ -22,10 +22,9 @@ import org.springframework.stereotype.Component;
  * {@code fail-startup-on-missing-executable} decides whether a broken path aborts startup or is only
  * logged and surfaced through the health endpoint.
  */
+@Slf4j
 @Component
 public class OracleClientValidator {
-
-	private static final Logger log = LoggerFactory.getLogger(OracleClientValidator.class);
 
 	private final OracleImportProperties properties;
 	private final AtomicReference<List<OracleExecutableCheck>> lastResult =

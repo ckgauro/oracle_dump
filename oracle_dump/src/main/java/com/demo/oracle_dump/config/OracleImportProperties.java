@@ -13,6 +13,9 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import lombok.Getter;
+import lombok.Setter;
+
 /**
  * Root configuration for the Oracle dump import pipeline.
  *
@@ -21,6 +24,7 @@ import org.springframework.validation.annotation.Validated;
  * shares ({@code //nas01/oracle-dumps/ClientA}). See {@code CLAUDE.md} for the full runtime contract.
  */
 @Validated
+@Getter
 @ConfigurationProperties(prefix = "oracle-import")
 public class OracleImportProperties {
 
@@ -39,37 +43,12 @@ public class OracleImportProperties {
 	@Valid
 	private final Importer importer = new Importer();
 
+	@Setter
 	private List<@Valid ClientDefinition> clients = new ArrayList<>();
 
-	public Scanner getScanner() {
-		return scanner;
-	}
-
-	public Processing getProcessing() {
-		return processing;
-	}
-
-	public Checksum getChecksum() {
-		return checksum;
-	}
-
-	public OracleClient getOracleClient() {
-		return oracleClient;
-	}
-
-	public Importer getImporter() {
-		return importer;
-	}
-
-	public List<ClientDefinition> getClients() {
-		return clients;
-	}
-
-	public void setClients(List<ClientDefinition> clients) {
-		this.clients = clients;
-	}
-
 	/** Directory scanning and file-stability detection. */
+	@Getter
+	@Setter
 	public static class Scanner {
 
 		private boolean enabled = true;
@@ -100,65 +79,11 @@ public class OracleImportProperties {
 		 * attempts to create UNC shares. Leave {@code false} in production.
 		 */
 		private boolean createMissingDirectories = false;
-
-		public boolean isEnabled() {
-			return enabled;
-		}
-
-		public void setEnabled(boolean enabled) {
-			this.enabled = enabled;
-		}
-
-		public Duration getInterval() {
-			return interval;
-		}
-
-		public void setInterval(Duration interval) {
-			this.interval = interval;
-		}
-
-		public Duration getStableFileCheckDelay() {
-			return stableFileCheckDelay;
-		}
-
-		public void setStableFileCheckDelay(Duration stableFileCheckDelay) {
-			this.stableFileCheckDelay = stableFileCheckDelay;
-		}
-
-		public int getStableScansRequired() {
-			return stableScansRequired;
-		}
-
-		public void setStableScansRequired(int stableScansRequired) {
-			this.stableScansRequired = stableScansRequired;
-		}
-
-		public List<String> getIgnoreSuffixes() {
-			return ignoreSuffixes;
-		}
-
-		public void setIgnoreSuffixes(List<String> ignoreSuffixes) {
-			this.ignoreSuffixes = ignoreSuffixes;
-		}
-
-		public List<String> getDumpSuffixes() {
-			return dumpSuffixes;
-		}
-
-		public void setDumpSuffixes(List<String> dumpSuffixes) {
-			this.dumpSuffixes = dumpSuffixes;
-		}
-
-		public boolean isCreateMissingDirectories() {
-			return createMissingDirectories;
-		}
-
-		public void setCreateMissingDirectories(boolean createMissingDirectories) {
-			this.createMissingDirectories = createMissingDirectories;
-		}
 	}
 
 	/** Worker pool and retry behaviour. */
+	@Getter
+	@Setter
 	public static class Processing {
 
 		private boolean enabled = true;
@@ -196,81 +121,11 @@ public class OracleImportProperties {
 		/** Grace period the dispatcher waits for in-flight imports on shutdown before force-stopping. */
 		@NotNull
 		private Duration shutdownGracePeriod = Duration.ofMinutes(2);
-
-		public boolean isEnabled() {
-			return enabled;
-		}
-
-		public void setEnabled(boolean enabled) {
-			this.enabled = enabled;
-		}
-
-		public int getMaxWorkers() {
-			return maxWorkers;
-		}
-
-		public void setMaxWorkers(int maxWorkers) {
-			this.maxWorkers = maxWorkers;
-		}
-
-		public Duration getPollInterval() {
-			return pollInterval;
-		}
-
-		public void setPollInterval(Duration pollInterval) {
-			this.pollInterval = pollInterval;
-		}
-
-		public Duration getStaleProcessingTimeout() {
-			return staleProcessingTimeout;
-		}
-
-		public void setStaleProcessingTimeout(Duration staleProcessingTimeout) {
-			this.staleProcessingTimeout = staleProcessingTimeout;
-		}
-
-		public int getMaxAttempts() {
-			return maxAttempts;
-		}
-
-		public void setMaxAttempts(int maxAttempts) {
-			this.maxAttempts = maxAttempts;
-		}
-
-		public Duration getRetryBackoff() {
-			return retryBackoff;
-		}
-
-		public void setRetryBackoff(Duration retryBackoff) {
-			this.retryBackoff = retryBackoff;
-		}
-
-		public Duration getRetryBackoffMax() {
-			return retryBackoffMax;
-		}
-
-		public void setRetryBackoffMax(Duration retryBackoffMax) {
-			this.retryBackoffMax = retryBackoffMax;
-		}
-
-		public int getDispatchBatchSize() {
-			return dispatchBatchSize;
-		}
-
-		public void setDispatchBatchSize(int dispatchBatchSize) {
-			this.dispatchBatchSize = dispatchBatchSize;
-		}
-
-		public Duration getShutdownGracePeriod() {
-			return shutdownGracePeriod;
-		}
-
-		public void setShutdownGracePeriod(Duration shutdownGracePeriod) {
-			this.shutdownGracePeriod = shutdownGracePeriod;
-		}
 	}
 
 	/** SHA-256 streaming checksum settings. */
+	@Getter
+	@Setter
 	public static class Checksum {
 
 		@NotBlank
@@ -279,25 +134,11 @@ public class OracleImportProperties {
 		/** Streaming read buffer. Larger buffers help on high-latency UNC shares. */
 		@Positive
 		private int bufferSizeMb = 8;
-
-		public String getAlgorithm() {
-			return algorithm;
-		}
-
-		public void setAlgorithm(String algorithm) {
-			this.algorithm = algorithm;
-		}
-
-		public int getBufferSizeMb() {
-			return bufferSizeMb;
-		}
-
-		public void setBufferSizeMb(int bufferSizeMb) {
-			this.bufferSizeMb = bufferSizeMb;
-		}
 	}
 
 	/** Location of the Oracle client utilities and the environment they need. Windows {@code .exe}s. */
+	@Getter
+	@Setter
 	public static class OracleClient {
 
 		private String impdpPath;
@@ -315,65 +156,11 @@ public class OracleImportProperties {
 
 		/** When {@code true}, missing executables abort startup; when {@code false} they only warn. */
 		private boolean failStartupOnMissingExecutable = false;
-
-		public String getImpdpPath() {
-			return impdpPath;
-		}
-
-		public void setImpdpPath(String impdpPath) {
-			this.impdpPath = impdpPath;
-		}
-
-		public String getImpPath() {
-			return impPath;
-		}
-
-		public void setImpPath(String impPath) {
-			this.impPath = impPath;
-		}
-
-		public String getSqlplusPath() {
-			return sqlplusPath;
-		}
-
-		public void setSqlplusPath(String sqlplusPath) {
-			this.sqlplusPath = sqlplusPath;
-		}
-
-		public String getOracleHome() {
-			return oracleHome;
-		}
-
-		public void setOracleHome(String oracleHome) {
-			this.oracleHome = oracleHome;
-		}
-
-		public String getTnsAdmin() {
-			return tnsAdmin;
-		}
-
-		public void setTnsAdmin(String tnsAdmin) {
-			this.tnsAdmin = tnsAdmin;
-		}
-
-		public boolean isValidateOnStartup() {
-			return validateOnStartup;
-		}
-
-		public void setValidateOnStartup(boolean validateOnStartup) {
-			this.validateOnStartup = validateOnStartup;
-		}
-
-		public boolean isFailStartupOnMissingExecutable() {
-			return failStartupOnMissingExecutable;
-		}
-
-		public void setFailStartupOnMissingExecutable(boolean failStartupOnMissingExecutable) {
-			this.failStartupOnMissingExecutable = failStartupOnMissingExecutable;
-		}
 	}
 
 	/** Selects which {@code DumpImporter} implementation is active. */
+	@Getter
+	@Setter
 	public static class Importer {
 
 		public enum Mode {
@@ -399,37 +186,5 @@ public class OracleImportProperties {
 		/** Hard ceiling on a single import; exceeding it kills the child process and fails the attempt. */
 		@NotNull
 		private Duration importTimeout = Duration.ofHours(6);
-
-		public Mode getMode() {
-			return mode;
-		}
-
-		public void setMode(Mode mode) {
-			this.mode = mode;
-		}
-
-		public Duration getMockDuration() {
-			return mockDuration;
-		}
-
-		public void setMockDuration(Duration mockDuration) {
-			this.mockDuration = mockDuration;
-		}
-
-		public String getImportLogRoot() {
-			return importLogRoot;
-		}
-
-		public void setImportLogRoot(String importLogRoot) {
-			this.importLogRoot = importLogRoot;
-		}
-
-		public Duration getImportTimeout() {
-			return importTimeout;
-		}
-
-		public void setImportTimeout(Duration importTimeout) {
-			this.importTimeout = importTimeout;
-		}
 	}
 }

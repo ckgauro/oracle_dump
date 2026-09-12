@@ -14,9 +14,9 @@ import com.demo.oracle_dump.io.IoFailure;
 import com.demo.oracle_dump.processing.ProcessingSteps.ChecksumWork;
 import com.demo.oracle_dump.processing.ProcessingSteps.ImportDecision;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Runs the full pipeline for one already-claimed dump record on a worker thread:
@@ -26,10 +26,9 @@ import org.springframework.stereotype.Component;
  * Slow phases (hashing, import) run outside any DB transaction. The per-client {@link Semaphore}
  * enforces {@code maxParallelImports} and is always released in a {@code finally}.
  */
+@Slf4j
 @Component
 public class DumpProcessor {
-
-	private static final Logger log = LoggerFactory.getLogger(DumpProcessor.class);
 
 	private final ProcessingSteps steps;
 	private final ChecksumService checksumService;

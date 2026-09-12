@@ -5,19 +5,18 @@ import com.demo.oracle_dump.config.ClientRegistry.ResolvedClient;
 import com.demo.oracle_dump.io.IoFailure;
 import com.demo.oracle_dump.lifecycle.PipelineState;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Orchestrates a scan across every enabled client. Each client is scanned in its own transaction by
  * {@link ClientDirectoryScanner}; failures are classified, logged and isolated so one bad share never
  * stops the others (CLAUDE.md §29).
  */
+@Slf4j
 @Component
 public class DirectoryScanner {
-
-	private static final Logger log = LoggerFactory.getLogger(DirectoryScanner.class);
 
 	private final ClientRegistry clients;
 	private final ClientDirectoryScanner clientScanner;

@@ -5,20 +5,19 @@ import java.time.Instant;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.domain.DumpFileRepository;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Resets dump records stuck in an in-flight state ({@code QUEUED/CHECKSUMMING/IMPORTING}) past the
  * stale timeout — the signature of a worker thread or whole service instance that died mid-import.
  * Such records go back to {@code PENDING_IMPORT} and are retried.
  */
+@Slf4j
 @Component
 public class StaleRecordReaper {
-
-	private static final Logger log = LoggerFactory.getLogger(StaleRecordReaper.class);
 
 	private final DumpFileRepository repository;
 	private final OracleImportProperties properties;

@@ -12,8 +12,6 @@ import com.demo.oracle_dump.domain.DumpFileRecord;
 import com.demo.oracle_dump.domain.DumpFileRepository;
 import com.demo.oracle_dump.lifecycle.PipelineState;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Limit;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,6 +19,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Polls the metadata DB for eligible dumps, claims only as many as there is free worker capacity for,
@@ -30,10 +30,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * than one service instance against a shared database is safe. H2 is fine for a single instance; use
  * a real RDBMS for multi-instance (CLAUDE.md §19).
  */
+@Slf4j
 @Component
 public class ImportDispatcher {
-
-	private static final Logger log = LoggerFactory.getLogger(ImportDispatcher.class);
 
 	private final DumpFileRepository repository;
 	private final DumpProcessor processor;

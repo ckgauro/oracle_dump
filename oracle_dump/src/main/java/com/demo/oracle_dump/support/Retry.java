@@ -4,8 +4,7 @@ import java.time.Duration;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Tiny functional retry helper for in-call transient failures (e.g. a single flaky UNC stat).
@@ -21,9 +20,8 @@ import org.slf4j.LoggerFactory;
  *         .call(() -> Files.readAttributes(path, BasicFileAttributes.class));
  * }</pre>
  */
+@Slf4j
 public final class Retry {
-
-	private static final Logger log = LoggerFactory.getLogger(Retry.class);
 
 	private final String description;
 	private int maxAttempts = 3;

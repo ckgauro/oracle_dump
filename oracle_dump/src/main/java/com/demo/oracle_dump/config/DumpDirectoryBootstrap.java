@@ -7,21 +7,20 @@ import java.nio.file.Path;
 import com.demo.oracle_dump.config.ClientRegistry.ResolvedClient;
 import com.demo.oracle_dump.io.WindowsPaths;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * When {@code oracle-import.scanner.create-missing-directories=true} (dev only), creates any missing
  * <em>local</em> client dump directory and the import-log root. UNC shares are never created — a
  * missing share is an infrastructure concern and is simply logged (CLAUDE.md §29).
  */
+@Slf4j
 @Component
 public class DumpDirectoryBootstrap {
-
-	private static final Logger log = LoggerFactory.getLogger(DumpDirectoryBootstrap.class);
 
 	private final ClientRegistry clients;
 	private final OracleImportProperties properties;

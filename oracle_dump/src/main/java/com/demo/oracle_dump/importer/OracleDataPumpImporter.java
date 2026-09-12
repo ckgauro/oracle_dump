@@ -10,8 +10,7 @@ import com.demo.oracle_dump.config.ClientDefinition;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.config.OracleImportProperties.Importer.Mode;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Real Windows {@code impdp.exe} importer. <strong>Execution is intentionally not implemented yet</strong>
@@ -23,9 +22,8 @@ import org.slf4j.LoggerFactory;
  * <p>This bean is only created when {@code oracle-import.importer.mode} is {@code impdp} or {@code imp};
  * see {@link ImporterConfig}.
  */
+@Slf4j
 public class OracleDataPumpImporter implements DumpImporter {
-
-	private static final Logger log = LoggerFactory.getLogger(OracleDataPumpImporter.class);
 
 	private final OracleImportProperties properties;
 	private final Mode mode;

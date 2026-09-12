@@ -5,12 +5,12 @@ import java.time.Duration;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.processing.ProcessingConfig;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Graceful start/stop for the Windows Service lifecycle (CLAUDE.md §20).
@@ -23,10 +23,9 @@ import org.springframework.stereotype.Component;
  * Anything still running when the grace period elapses is reset to {@code PENDING_IMPORT} by the
  * stale-record reaper on the next startup, so no dump is ever lost — only delayed.
  */
+@Slf4j
 @Component
 public class ProcessingLifecycle implements SmartLifecycle {
-
-	private static final Logger log = LoggerFactory.getLogger(ProcessingLifecycle.class);
 
 	private final PipelineState pipelineState;
 	private final ThreadPoolTaskExecutor importExecutor;

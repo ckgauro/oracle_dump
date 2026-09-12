@@ -20,22 +20,21 @@ import com.demo.oracle_dump.domain.DumpFileRepository;
 import com.demo.oracle_dump.domain.DumpStatus;
 import com.demo.oracle_dump.io.IoFailure;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Scans exactly one client's dump directory inside its own transaction, so a failure on one bad UNC
  * share never rolls back progress for the other clients (CLAUDE.md §29). All filesystem access goes
  * through NIO {@link Files}/{@link DirectoryStream} (CLAUDE.md §4, §8).
  */
+@Slf4j
 @Component
 public class ClientDirectoryScanner {
-
-	private static final Logger log = LoggerFactory.getLogger(ClientDirectoryScanner.class);
 
 	private final DumpFileRepository repository;
 	private final FileStabilityChecker stabilityChecker;

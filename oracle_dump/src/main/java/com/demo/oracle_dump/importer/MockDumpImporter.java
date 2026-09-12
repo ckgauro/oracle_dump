@@ -12,19 +12,18 @@ import java.util.List;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.config.OracleImportProperties.Importer.Mode;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Default importer: no Oracle contact. Verifies the dump is readable, writes a realistic-looking log
  * file, sleeps for a configured duration to mimic a real import, and reports success. Safe for dev
  * and CI, and the reference implementation for the log-file contract real importers must honour.
  */
+@Slf4j
 @Component
 public class MockDumpImporter implements DumpImporter {
-
-	private static final Logger log = LoggerFactory.getLogger(MockDumpImporter.class);
 
 	private final OracleImportProperties properties;
 

@@ -9,19 +9,18 @@ import java.util.concurrent.Semaphore;
 
 import com.demo.oracle_dump.io.WindowsPaths;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Resolves the configured clients once at startup: validates that client IDs are unique, normalises
  * each dump directory to an absolute {@link Path} (UNC-aware), and creates one fair {@link Semaphore}
  * per client to enforce {@code maxParallelImports}.
  */
+@Slf4j
 @Component
 public class ClientRegistry {
-
-	private static final Logger log = LoggerFactory.getLogger(ClientRegistry.class);
 
 	private final Map<String, ResolvedClient> clients = new LinkedHashMap<>();
 

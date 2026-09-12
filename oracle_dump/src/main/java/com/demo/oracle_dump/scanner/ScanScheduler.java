@@ -3,20 +3,19 @@ package com.demo.oracle_dump.scanner;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.lifecycle.PipelineState;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Drives {@link DirectoryScanner} on a fixed delay ({@code oracle-import.scanner.interval}). Uses
  * {@code fixedDelay} (not {@code fixedRate}) so a slow scan over a laggy UNC share never overlaps the
  * next one.
  */
+@Slf4j
 @Component
 public class ScanScheduler {
-
-	private static final Logger log = LoggerFactory.getLogger(ScanScheduler.class);
 
 	private final DirectoryScanner scanner;
 	private final OracleImportProperties properties;

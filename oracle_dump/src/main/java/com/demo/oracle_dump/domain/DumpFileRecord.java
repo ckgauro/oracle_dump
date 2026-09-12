@@ -15,6 +15,12 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+
 /**
  * Metadata for one dump file. This is the single source of truth for what has been seen, checksummed
  * and imported; the actual {@code impdp} output is written to a log file on disk and only its path is
@@ -32,25 +38,38 @@ import jakarta.persistence.Version;
 				@Index(name = "ix_dump_client_checksum", columnList = "client_id,sha256"),
 				@Index(name = "ix_dump_in_flight", columnList = "status,claimed_at")
 		})
+@Getter
+@Setter
+@ToString(onlyExplicitlyIncluded = true)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DumpFileRecord {
 
+	@Setter(AccessLevel.NONE)
+	@ToString.Include
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
+	@Setter(AccessLevel.NONE)
 	@Version
 	private long version;
 
+	@Setter(AccessLevel.NONE)
+	@ToString.Include
 	@Column(name = "client_id", nullable = false, length = 128)
 	private String clientId;
 
+	@Setter(AccessLevel.NONE)
+	@ToString.Include
 	@Column(name = "file_name", nullable = false, length = 512)
 	private String fileName;
 
 	/** Absolute, normalised path (UNC-aware). Duplicate detection key together with {@link #clientId}. */
+	@Setter(AccessLevel.NONE)
 	@Column(name = "absolute_path", nullable = false, length = 2048)
 	private String absolutePath;
 
+	@ToString.Include(name = "size")
 	@Column(name = "size_bytes", nullable = false)
 	private long sizeBytes;
 
@@ -60,6 +79,8 @@ public class DumpFileRecord {
 	@Column(name = "sha256", length = 64)
 	private String sha256;
 
+	@Setter(AccessLevel.NONE)
+	@ToString.Include
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 32)
 	private DumpStatus status = DumpStatus.DISCOVERED;
@@ -69,6 +90,7 @@ public class DumpFileRecord {
 	@Column(name = "stable_scan_count", nullable = false)
 	private int stableScanCount;
 
+	@Setter(AccessLevel.NONE)
 	@Column(name = "first_seen_at", nullable = false)
 	private Instant firstSeenAt = Instant.now();
 
@@ -84,6 +106,7 @@ public class DumpFileRecord {
 	@Column(name = "next_eligible_at", nullable = false)
 	private Instant nextEligibleAt = Instant.now();
 
+	@ToString.Include(name = "attempts")
 	@Column(name = "attempt_count", nullable = false)
 	private int attemptCount;
 
@@ -117,9 +140,6 @@ public class DumpFileRecord {
 	@Column(name = "last_error_at")
 	private Instant lastErrorAt;
 
-	protected DumpFileRecord() {
-	}
-
 	public DumpFileRecord(String clientId, String fileName, String absolutePath, long sizeBytes,
 			long lastModifiedEpochMs) {
 		this.clientId = clientId;
@@ -150,179 +170,7 @@ public class DumpFileRecord {
 		return sha256 != null && !sha256.isBlank() && matchesOnDisk(size, lastModifiedMs);
 	}
 
-	// --- getters / setters ------------------------------------------------
-
-	public Long getId() {
-		return id;
-	}
-
-	public long getVersion() {
-		return version;
-	}
-
-	public String getClientId() {
-		return clientId;
-	}
-
-	public String getFileName() {
-		return fileName;
-	}
-
-	public String getAbsolutePath() {
-		return absolutePath;
-	}
-
-	public long getSizeBytes() {
-		return sizeBytes;
-	}
-
-	public void setSizeBytes(long sizeBytes) {
-		this.sizeBytes = sizeBytes;
-	}
-
-	public long getLastModifiedEpochMs() {
-		return lastModifiedEpochMs;
-	}
-
-	public void setLastModifiedEpochMs(long lastModifiedEpochMs) {
-		this.lastModifiedEpochMs = lastModifiedEpochMs;
-	}
-
-	public String getSha256() {
-		return sha256;
-	}
-
-	public void setSha256(String sha256) {
-		this.sha256 = sha256;
-	}
-
-	public DumpStatus getStatus() {
-		return status;
-	}
-
-	public int getStableScanCount() {
-		return stableScanCount;
-	}
-
-	public void setStableScanCount(int stableScanCount) {
-		this.stableScanCount = stableScanCount;
-	}
-
-	public Instant getFirstSeenAt() {
-		return firstSeenAt;
-	}
-
-	public Instant getLastSeenAt() {
-		return lastSeenAt;
-	}
-
-	public void setLastSeenAt(Instant lastSeenAt) {
-		this.lastSeenAt = lastSeenAt;
-	}
-
-	public boolean isPresentOnDisk() {
-		return presentOnDisk;
-	}
-
-	public void setPresentOnDisk(boolean presentOnDisk) {
-		this.presentOnDisk = presentOnDisk;
-	}
-
-	public Instant getNextEligibleAt() {
-		return nextEligibleAt;
-	}
-
-	public void setNextEligibleAt(Instant nextEligibleAt) {
-		this.nextEligibleAt = nextEligibleAt;
-	}
-
-	public int getAttemptCount() {
-		return attemptCount;
-	}
-
-	public void setAttemptCount(int attemptCount) {
-		this.attemptCount = attemptCount;
-	}
-
 	public int incrementAttemptCount() {
 		return ++this.attemptCount;
-	}
-
-	public String getWorkerId() {
-		return workerId;
-	}
-
-	public void setWorkerId(String workerId) {
-		this.workerId = workerId;
-	}
-
-	public Instant getClaimedAt() {
-		return claimedAt;
-	}
-
-	public void setClaimedAt(Instant claimedAt) {
-		this.claimedAt = claimedAt;
-	}
-
-	public Instant getImportStartedAt() {
-		return importStartedAt;
-	}
-
-	public void setImportStartedAt(Instant importStartedAt) {
-		this.importStartedAt = importStartedAt;
-	}
-
-	public Instant getImportFinishedAt() {
-		return importFinishedAt;
-	}
-
-	public void setImportFinishedAt(Instant importFinishedAt) {
-		this.importFinishedAt = importFinishedAt;
-	}
-
-	public Long getImportDurationMs() {
-		return importDurationMs;
-	}
-
-	public void setImportDurationMs(Long importDurationMs) {
-		this.importDurationMs = importDurationMs;
-	}
-
-	public String getImportLogPath() {
-		return importLogPath;
-	}
-
-	public void setImportLogPath(String importLogPath) {
-		this.importLogPath = importLogPath;
-	}
-
-	public Long getDuplicateOfId() {
-		return duplicateOfId;
-	}
-
-	public void setDuplicateOfId(Long duplicateOfId) {
-		this.duplicateOfId = duplicateOfId;
-	}
-
-	public String getLastError() {
-		return lastError;
-	}
-
-	public void setLastError(String lastError) {
-		this.lastError = lastError;
-	}
-
-	public Instant getLastErrorAt() {
-		return lastErrorAt;
-	}
-
-	public void setLastErrorAt(Instant lastErrorAt) {
-		this.lastErrorAt = lastErrorAt;
-	}
-
-	@Override
-	public String toString() {
-		return "DumpFileRecord{id=" + id + ", clientId='" + clientId + "', fileName='" + fileName
-				+ "', status=" + status + ", size=" + sizeBytes + ", attempts=" + attemptCount + "}";
 	}
 }

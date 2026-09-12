@@ -6,21 +6,20 @@ import java.util.stream.Collectors;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.config.OracleImportProperties.Importer.Mode;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Wires the {@link DumpImporter} that matches {@code oracle-import.importer.mode}. The rest of the
  * pipeline depends only on the {@code @Primary} {@link DumpImporter}, so switching modes is a
  * config-only change.
  */
+@Slf4j
 @Configuration(proxyBeanMethods = false)
 public class ImporterConfig {
-
-	private static final Logger log = LoggerFactory.getLogger(ImporterConfig.class);
 
 	@Bean
 	OracleDataPumpImporter impdpImporter(OracleImportProperties properties) {

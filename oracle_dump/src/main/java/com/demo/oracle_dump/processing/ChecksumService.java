@@ -14,19 +14,18 @@ import java.util.HexFormat;
 import com.demo.oracle_dump.config.OracleImportProperties;
 import com.demo.oracle_dump.io.IoFailure;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Streaming SHA-256 over a dump file. The whole file must be read (CLAUDE.md §18), so on a 20 GB UNC
  * dump this is 20 GB of network I/O — callers reuse a stored hash whenever path + size + mtime are
  * unchanged and only fall back to this when a fresh hash is genuinely required.
  */
+@Slf4j
 @Component
 public class ChecksumService {
-
-	private static final Logger log = LoggerFactory.getLogger(ChecksumService.class);
 
 	private final OracleImportProperties properties;
 

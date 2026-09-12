@@ -18,20 +18,20 @@ import com.demo.oracle_dump.importer.ImportRequest;
 import com.demo.oracle_dump.importer.ImportResult;
 import com.demo.oracle_dump.io.IoFailure;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * The short, transactional database steps of processing one dump. The slow work (hashing 20 GB,
  * running impdp) happens <em>between</em> these calls in {@link DumpProcessor}, so no DB transaction
  * is ever held open across it.
  */
+@Slf4j
 @Component
 public class ProcessingSteps {
 
-	private static final Logger log = LoggerFactory.getLogger(ProcessingSteps.class);
 	private static final int MAX_ERROR_LEN = 8_000;
 
 	private final DumpFileRepository repository;
