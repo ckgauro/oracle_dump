@@ -1,15 +1,58 @@
-# windows profile: Windows Server target environment.
+# windows profile: Windows Server target environment (CLAUDE.md).
 # Activate with SPRING_PROFILES_ACTIVE=windows (or -Dspring-boot.run.profiles=windows,
 # or IntelliJ's "Active profiles" field).
 #
-# Mirrors the production defaults already in application.yaml (base document), but as
-# an explicit profile so you can switch between "dev" (Mac) and "windows" the same way.
+# application.yaml (no profile / base document) is configured for local Mac development,
+# so this file no longer just overrides oracle-client + clients on top of it — it is fully
+# self-contained: its own datasource, scanner/processing timings, logging level, and H2
+# console setting, all production-appropriate for a Windows Server deployment.
 spring:
   config:
     activate:
       on-profile: windows
+  datasource:
+    # Windows Server production: keep this on LOCAL disk, never a share (CLAUDE.md §19).
+    url: jdbc:h2:file:D:/OracleImporter/data/oracle-import;AUTO_SERVER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+  h2:
+    console:
+      enabled: false   # disable in production (see "Security notes" in architecture.md)
+
+logging:
+  level:
+    com.demo.oracle_dump: INFO
 
 oracle-import:
+
+  scanner:
+    enabled: true
+    interval: 30s
+    stable-file-check-delay: 30s
+    stable-scans-required: 2
+    ignore-suffixes: [".part", ".tmp", ".partial", ".copying"]
+    dump-suffixes: [".dmp"]
+    create-missing-directories: false   # never auto-create dirs in production, especially UNC shares
+
+  processing:
+    enabled: true
+    max-workers: 4
+    poll-interval: 10s
+    stale-processing-timeout: 2h
+    max-attempts: 5
+    retry-backoff: 1m
+    retry-backoff-max: 1h
+    dispatch-batch-size: 50
+    shutdown-grace-period: 2m
+
+  checksum:
+    algorithm: SHA-256
+    buffer-size-mb: 8
+
   oracle-client:
     # Windows .exe paths. Prefer forward slashes in YAML (CLAUDE.md §1, §9).
     impdp-path: "C:/Oracle/product/19c/client_1/bin/impdp.exe"
@@ -19,6 +62,12 @@ oracle-import:
     tns-admin: "C:/Oracle/network/admin"
     validate-on-startup: true
     fail-startup-on-missing-executable: false
+
+  importer:
+    mode: mock
+    mock-duration: 2s
+    import-log-root: "D:/OracleImporter/logs/imports"   # keep on LOCAL disk, not a share
+    import-timeout: 6h
 
   # Local Windows path OR UNC share; never a mapped drive for a service (CLAUDE.md "Important Windows Rule").
   clients:

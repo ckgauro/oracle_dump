@@ -375,6 +375,34 @@ mv /Users/chandragauro/temp/oracle-dumps/client-a/clienta_2026_09.dmp.part \
 > If you edited the `dev` profile's `dump-directory` paths to somewhere else on your machine (see
 > the note in [Step 3](#step-3--start-the-service)), substitute that path here instead.
 
+### 5.2a — Create a large file with a unique checksum (macOS / Linux, `dev` profile)
+
+Useful when you want a realistically-sized (~10 GB) dump file whose content — and therefore
+checksum — is different every time you run it, e.g. to test large-file handling without tripping
+the [duplicate detection](#step-8--duplicate-files) from Step 8:
+
+```bash
+file="/Users/chandragauro/temp/oracle-dumps/client-a/dump_$(openssl rand -hex 8).dmp"; \
+mkfile 10g "$file"; \
+openssl rand 4096 | dd of="$file" bs=4096 count=1 conv=notrunc 2>/dev/null; \
+echo "Created: $file"; \
+shasum -a 256 "$file"
+```
+
+- `dump_$(openssl rand -hex 8).dmp` — a random 16-hex-character filename, so each run creates a
+  distinct file.
+- `mkfile 10g "$file"` — macOS-only; allocates a sparse 10 GB file almost instantly. On Linux use
+  `truncate -s 10G "$file"` or `fallocate -l 10G "$file"` instead.
+- `openssl rand 4096 | dd of="$file" bs=4096 count=1 conv=notrunc` — overwrites just the first 4 KB
+  with random bytes, so the SHA-256 differs between runs even though the rest of the file is
+  unallocated/zero.
+- `shasum -a 256 "$file"` — prints the checksum so you can confirm it against `/api/dumps` later.
+
+> **NOTE:** This writes straight to the final `.dmp` name (no `.part` step) — fine for manual
+> testing, but see the `.part` convention in
+> [5.1](#51--the-golden-rule-never-let-the-scanner-see-a-half-written-file) for the safe pattern to
+> use with real uploads.
+
 ### 5.3 — Create a test file (Windows, `windows` profile)
 
 The `windows` profile (Option C, Step 3) ships with placeholder example paths (a UNC share and a
@@ -388,6 +416,31 @@ Rename-Item D:\OracleDumps\ClientB\clientb_2026_09.dmp.part clientb_2026_09.dmp
 
 You can also just **copy any existing file** into the configured folder and rename its extension
 to `.dmp` — the mechanism is the same.
+
+#### Large file with a unique checksum (Windows)
+
+The PowerShell equivalent of
+[5.2a](#52a--create-a-large-file-with-a-unique-checksum-macos--linux-dev-profile) — creates a
+sparse ~10 GB file with random content in its first 4 KB, so each run gets a distinct checksum:
+
+```powershell
+$file = "D:\OracleDumps\ClientB\dump_$([guid]::NewGuid().ToString('N').Substring(0,16)).dmp"
+fsutil file createnew $file 10737418240
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$bytes = New-Object byte[] 4096
+$rng.GetBytes($bytes)
+$stream = [System.IO.File]::OpenWrite($file)
+$stream.Write($bytes, 0, $bytes.Length)
+$stream.Close()
+Write-Host "Created: $file"
+Get-FileHash $file -Algorithm SHA256
+```
+
+- `fsutil file createnew $file 10737418240` — allocates a sparse 10 GB (`10737418240` bytes) file
+  almost instantly; the Windows equivalent of `mkfile`/`truncate`.
+- `RandomNumberGenerator` + `Stream.Write` — overwrites the first 4 KB with random bytes so the
+  checksum differs between runs.
+- `Get-FileHash -Algorithm SHA256` — the PowerShell equivalent of `shasum -a 256`.
 
 ### 5.4 — Which folder?
 
