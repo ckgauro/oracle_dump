@@ -79,6 +79,10 @@ public class DumpFileRecord {
 	@Column(name = "sha256", length = 64)
 	private String sha256;
 
+	/** Time spent streaming the file for a freshly computed hash; null when a stored checksum was reused. */
+	@Column(name = "checksum_duration_minute")
+	private Long checksumDurationMinute;
+
 	@Setter(AccessLevel.NONE)
 	@ToString.Include
 	@Enumerated(EnumType.STRING)

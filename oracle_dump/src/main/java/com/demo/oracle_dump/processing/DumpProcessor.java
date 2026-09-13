@@ -64,14 +64,20 @@ public class DumpProcessor {
 
 	private void runFrom(ChecksumWork work) {
 		long recordId = work.recordId();
-		String sha256 = work.canReuse()
-				? work.reusableSha256()
-				: checksumService.hash(work.dumpPath()).sha256Hex();
+		String sha256;
+		Duration checksumDuration;
 		if (work.canReuse()) {
+			sha256 = work.reusableSha256();
+			checksumDuration = null;
 			log.debug("Reused stored checksum for record {}", recordId);
 		}
+		else {
+			ChecksumService.Result result = checksumService.hash(work.dumpPath());
+			sha256 = result.sha256Hex();
+			checksumDuration = result.elapsed();
+		}
 
-		ImportDecision decision = steps.completeChecksum(recordId, sha256);
+		ImportDecision decision = steps.completeChecksum(recordId, sha256, checksumDuration);
 		switch (decision) {
 			case ImportDecision.Duplicate d ->
 					log.info("Record {} short-circuited as duplicate of {}", recordId, d.originalId());

@@ -90,12 +90,13 @@ public class ProcessingSteps {
 	 * unique move to {@link DumpStatus#IMPORTING} and build the {@link ImportRequest}.
 	 */
 	@Transactional
-	public ImportDecision completeChecksum(long recordId, String sha256) {
+	public ImportDecision completeChecksum(long recordId, String sha256, Duration checksumDuration) {
 		DumpFileRecord record = load(recordId);
 		if (record.getStatus() != DumpStatus.CHECKSUMMING) {
 			return new ImportDecision.Aborted("unexpected status " + record.getStatus());
 		}
 		record.setSha256(sha256);
+		record.setChecksumDurationMinute(checksumDuration == null ? null : checksumDuration.toMinutes());
 
 		Optional<DumpFileRecord> sibling = repository
 				.findChecksumSiblings(record.getClientId(), sha256, recordId).stream().findFirst();
