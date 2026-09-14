@@ -1,5 +1,6 @@
 package com.oracle.checksum.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import jakarta.persistence.Column;
@@ -65,4 +66,9 @@ public class DumpFileRecord {
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    // DECIMAL, not DOUBLE: H2 renders small DOUBLE values (e.g. 0.00002) in
+    // scientific notation ("2.0E-5"), which is not human-readable in the console.
+    @Column(name = "checksum_duration_minutes", precision = 20, scale = 8)
+    private BigDecimal checksumDurationMinutes;
 }

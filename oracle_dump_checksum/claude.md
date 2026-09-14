@@ -26,6 +26,7 @@ A Spring Boot service that, for a set of clients, scans each client's Oracle dum
   - Spring Scheduling (`@EnableScheduling`)
 - Lombok (`@Getter`/`@Setter`, `@Builder`, `@RequiredArgsConstructor`, `@Slf4j` on services)
 - H2 (file-based or in-memory, see §7.4) as the only datastore for this phase
+  - Spring Boot 4.1.1 ships the H2 console as its own starter (`spring-boot-h2console`), separate from the `h2` JDBC driver — add both if `spring.h2.console.enabled` is to work.
 - Build tool: Maven or Gradle (unspecified — pick one and stay consistent; examples below assume Maven layout)
 
 ## 4. Package Layout
@@ -92,6 +93,7 @@ This is the table that satisfies requirement 5: adding a new client, or changing
 | claimed_by | VARCHAR | worker/thread identifier, for diagnostics |
 | claimed_at | TIMESTAMP | |
 | completed_at | TIMESTAMP | |
+| checksum_duration_minutes | DECIMAL(20,8) | wall-clock time from `claimed_at` to `completed_at`, in minutes; set alongside `completed_at`. Use `DECIMAL`, not `DOUBLE` — H2's console renders small `DOUBLE` values in scientific notation (e.g. `2.0E-5`), which is not human-readable when inspecting the table during a demo. |
 
 Unique constraint on `(client_id, file_path)`. This is what makes "already picked up" a database fact, not an in-memory one — safe even if the app restarts mid-run.
 
@@ -135,6 +137,8 @@ Per requirement 5, client-to-path mapping is **not** in `application.yaml` — i
 ### 7.3 Seeding demo data
 
 For the H2 demo phase, seed `client` and `client_file_location` via `data.sql` (Spring Boot's standard seeding mechanism) so the service is runnable out of the box with example clients/paths, without that seeding mechanism becoming the permanent configuration path.
+
+`base_path` in the seed rows must be an absolute directory that actually exists on the machine running the demo (e.g. `/Users/<you>/temp/oracle-dumps/acme`) — it is developer-machine-specific and should be edited in `data.sql` (or overridden with an `UPDATE client_file_location ...` afterward) to match wherever sample `.dmp` files live locally, rather than assumed to be a path checked into the repo.
 
 ### 7.4 H2 mode
 

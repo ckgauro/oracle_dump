@@ -11,12 +11,13 @@ write tech spec for claude.md file. Main objective are
 
 I have written tech spec in claude.md. Create projects according to that.
 
-Create  "runbook.md" file with table of contents.
+Create  "architecture.md" file with table of contents.
 Explain in details of this project
 - Store images inside "images" folder
 - Don't write plantuml diagram code direct use image with proper remarks. with light background or you can use jif image for animation if required.
 - Explain thoroughly with examples and notes for following only
 - Add reference too.
 
-- Please analysis project create step by step how to execute this application by end users.
+- Please explain project in architecture of the project
+
 

@@ -54,8 +54,12 @@ recovery.*
 
 > **NOTE:** Client-to-directory mapping is **not** in `application.yaml`. It lives in the `client`
 > and `client_file_location` H2 tables, seeded on first boot by `data.sql` with two demo clients
-> (`ACME` → `./demo-data/acme`, `GLOBEX` → `./demo-data/globex`). Adding a real client is a SQL
-> insert, not a config edit — see [Step 5](#step-5--add-a-client-and-drop-a-dump-file).
+> (`ACME` → `/Users/<you>/temp/oracle-dumps/acme`, `GLOBEX` → `/Users/<you>/temp/oracle-dumps/globex`
+> — an absolute, developer-machine-specific path, not the repo-relative `./demo-data/...` this
+> runbook used previously). **Before Step 3, edit those two `base_path` values in `data.sql`** to a
+> directory that actually exists on your machine (or run the `UPDATE client_file_location ...`
+> shown in [Step 5](#step-5--add-a-client-and-drop-a-dump-file) after first boot). Adding a real
+> client is a SQL insert, not a config edit either way.
 
 ---
 
@@ -66,6 +70,10 @@ cd <your workspace>
 cd oracle_dump/oracle_dump_checksum
 ls    # you should see: pom.xml  src/  readme.md  analysis.md  demo-data/
 ```
+
+> The checked-in `demo-data/` folder is sample content only — `data.sql` no longer points at it by
+> default (see the [Step 0](#step-0--prerequisites) note); it now seeds an absolute path outside
+> the repo, so create/point that directory yourself before Step 3.
 
 ---
 
@@ -159,9 +167,17 @@ java -jar target/checksum-service-0.0.1-SNAPSHOT.jar
 ```
 
 There is only **one** `application.yaml` — no profiles to choose between. On first boot,
-`data.sql` seeds the two demo clients (`ACME`, `GLOBEX`) pointing at `./demo-data/acme` and
-`./demo-data/globex`, which already contain sample `.dmp` files, so the service has something to
-scan immediately.
+`data.sql` seeds the two demo clients (`ACME`, `GLOBEX`) pointing at whatever absolute
+`base_path` values are set in `data.sql` (by default `/Users/<you>/temp/oracle-dumps/acme` and
+`/Users/<you>/temp/oracle-dumps/globex`). Make sure those two directories exist and contain sample
+`.dmp` files **before** starting the service — unlike the old repo-relative `./demo-data/...`
+convention, an absolute path outside the repo is not guaranteed to exist until you create it:
+
+```bash
+mkdir -p /Users/<you>/temp/oracle-dumps/acme /Users/<you>/temp/oracle-dumps/globex
+echo 'ORACLE DUMP PAYLOAD - ACME SAMPLE 1' > /Users/<you>/temp/oracle-dumps/acme/sample1.dmp
+echo 'ORACLE DUMP PAYLOAD - GLOBEX SAMPLE 1' > /Users/<you>/temp/oracle-dumps/globex/sample1.dmp
+```
 
 #### How to tell it started correctly
 
@@ -235,7 +251,7 @@ clients' three sample files.*
 | `curl: (7) Failed to connect to localhost port 8080` | The service isn't running (or is still starting, or on another port) | Check the Step 3 terminal for `Started ChecksumApplication`; wait a few seconds and retry |
 | `curl: command not found` | `curl` isn't installed | Install it, or open the URL in a web browser instead |
 | JSON prints but `jq: command not found` follows | `jq` isn't installed | Remove `| jq` from the command, or install it (see 4.1) |
-| Status never leaves `{}` even after 30+ seconds | A configured `base_path` doesn't exist, or the demo `.dmp` files were deleted | Check the Step 3 log for a `WARN ... not a directory` line; confirm `demo-data/acme` and `demo-data/globex` exist |
+| Status never leaves `{}` even after 30+ seconds | A configured `base_path` doesn't exist, or the demo `.dmp` files were deleted | Check the Step 3 log for a `WARN ... not a directory` line; confirm the absolute paths seeded in `data.sql` (e.g. `/Users/<you>/temp/oracle-dumps/acme` and `.../globex`) actually exist on this machine |
 
 ---
 
@@ -258,8 +274,13 @@ java -cp "$H2_JAR" org.h2.tools.Shell \
   -url "jdbc:h2:file:./data/checksum-db;AUTO_SERVER=TRUE" -user sa -password "" \
   -sql "INSERT INTO client (code, name, active) VALUES ('INITECH', 'Initech LLC', TRUE);
         INSERT INTO client_file_location (client_id, base_path, file_pattern, active)
-        SELECT id, './demo-data/initech', '*.dmp', TRUE FROM client WHERE code = 'INITECH';"
+        SELECT id, '/Users/<you>/temp/oracle-dumps/initech', '*.dmp', TRUE FROM client WHERE code = 'INITECH';"
 ```
+
+`base_path` must be an absolute directory that exists on this machine, matching the convention
+`data.sql` now uses for the `ACME`/`GLOBEX` seed rows ([Step 0](#step-0--prerequisites)) —
+relative paths like the old `./demo-data/initech` are resolved against the working directory the
+service was started from, which is fragile if you start it from somewhere else next time.
 
 `;AUTO_SERVER=TRUE` on the URL is what lets this second, short-lived connection reach the same
 database file the running service already has open — see
@@ -268,8 +289,8 @@ database file the running service already has open — see
 ### 5.2 — Drop a dump file into its directory
 
 ```bash
-mkdir -p demo-data/initech
-echo 'ORACLE DUMP PAYLOAD - INITECH Q3 EXPORT' > demo-data/initech/initech_q3.dmp
+mkdir -p /Users/<you>/temp/oracle-dumps/initech
+echo 'ORACLE DUMP PAYLOAD - INITECH Q3 EXPORT' > /Users/<you>/temp/oracle-dumps/initech/initech_q3.dmp
 ```
 
 Any file matching the location's `file_pattern` (`*.dmp` by default) is a candidate — the content
@@ -396,8 +417,8 @@ out from under the worker mid-read.
 ### 9.2 — Reproduce a real failure
 
 ```bash
-echo 'UNREADABLE PAYLOAD' > demo-data/initech/locked_export.dmp
-chmod 000 demo-data/initech/locked_export.dmp
+echo 'UNREADABLE PAYLOAD' > /Users/<you>/temp/oracle-dumps/initech/locked_export.dmp
+chmod 000 /Users/<you>/temp/oracle-dumps/initech/locked_export.dmp
 curl -s -X POST localhost:8080/api/checksum/scan
 curl -s localhost:8080/api/checksum/status | jq
 ```
@@ -424,7 +445,7 @@ reaches `COMPLETED`.*
 ### 9.4 — The recovery command
 
 ```bash
-chmod 644 demo-data/initech/locked_export.dmp
+chmod 644 /Users/<you>/temp/oracle-dumps/initech/locked_export.dmp
 
 java -cp ~/.m2/repository/com/h2database/h2/2.4.240/h2-2.4.240.jar org.h2.tools.Shell \
   -url "jdbc:h2:file:./data/checksum-db;AUTO_SERVER=TRUE" -user sa -password "" \
@@ -538,6 +559,7 @@ The only index beyond each table's primary key is the **unique constraint on
 | `claimed_by` | `VARCHAR` | yes | The worker (virtual thread) identifier that won the claim. |
 | `claimed_at` | `TIMESTAMP` | yes | When the claim `UPDATE` succeeded. |
 | `completed_at` | `TIMESTAMP` | yes | When the checksum finished successfully. `NULL` for `FAILED` rows. |
+| `checksum_duration_minutes` | `DECIMAL(20,8)` | yes | `completed_at - claimed_at`, in minutes. `NULL` until `COMPLETED`. Stored as `DECIMAL`/`BigDecimal` rather than `DOUBLE` on purpose — H2's console prints small `DOUBLE` values in scientific notation (e.g. `2.0E-5`), which isn't readable when eyeballing the table. |
 
 ### Option 1 — the H2 web console (easiest)
 
@@ -555,8 +577,11 @@ The only index beyond each table's primary key is the **unique constraint on
    works; if you changed that URL, add `;AUTO_SERVER=TRUE` back.
 3. Click **Connect**, then run SQL, e.g. `SELECT * FROM dump_file_record;`.
 
-> The console is enabled by `spring.h2.console.enabled: true` in `application.yaml`. **Do not
-> carry this into a shared or production environment** — see `analysis.md` §10.
+> The console is enabled by `spring.h2.console.enabled: true` in `application.yaml`, and requires
+> the `spring-boot-h2console` starter on the classpath (`pom.xml`) — Spring Boot 4.1.1 split the
+> console's auto-configuration out of the `h2` JDBC driver dependency into its own artifact, so
+> both must be present. **Do not carry either into a shared or production environment** — see
+> `analysis.md` §10.
 
 ### Option 2 — the H2 command-line shell
 
@@ -705,7 +730,7 @@ again to resume.
 ### Retire one watched path but keep the client active
 
 ```sql
-UPDATE client_file_location SET active = FALSE WHERE base_path = './demo-data/acme/archive';
+UPDATE client_file_location SET active = FALSE WHERE base_path = '/Users/<you>/temp/oracle-dumps/acme/archive';
 ```
 
 ### Change the checksum algorithm

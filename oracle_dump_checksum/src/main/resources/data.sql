@@ -12,19 +12,19 @@ SELECT 'GLOBEX', 'Globex Inc', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM client WHERE code = 'GLOBEX');
 
 INSERT INTO client_file_location (client_id, base_path, file_pattern, active)
-SELECT c.id, './demo-data/acme', '*.dmp', TRUE
+SELECT c.id, '/Users/chandragauro/temp/oracle-dumps/acme', '*.dmp', TRUE
 FROM client c
 WHERE c.code = 'ACME'
   AND NOT EXISTS (
       SELECT 1 FROM client_file_location l
-      WHERE l.client_id = c.id AND l.base_path = './demo-data/acme'
+      WHERE l.client_id = c.id AND l.base_path = '/Users/chandragauro/temp/oracle-dumps/acme'
   );
 
 INSERT INTO client_file_location (client_id, base_path, file_pattern, active)
-SELECT c.id, './demo-data/globex', '*.dmp', TRUE
+SELECT c.id, '/Users/chandragauro/temp/oracle-dumps/globex', '*.dmp', TRUE
 FROM client c
 WHERE c.code = 'GLOBEX'
   AND NOT EXISTS (
       SELECT 1 FROM client_file_location l
-      WHERE l.client_id = c.id AND l.base_path = './demo-data/globex'
+      WHERE l.client_id = c.id AND l.base_path = '/Users/chandragauro/temp/oracle-dumps/globex'
   );

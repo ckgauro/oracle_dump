@@ -1,5 +1,8 @@
 package com.oracle.checksum.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -47,10 +50,14 @@ public class ChecksumClaimService {
     @Transactional
     public void markCompleted(Long id, String algorithm, String checksumValue) {
         dumpFileRecordRepository.findById(id).ifPresent(record -> {
+            Instant completedAt = Instant.now();
             record.setChecksumAlgorithm(algorithm);
             record.setChecksumValue(checksumValue);
             record.setStatus(DumpFileStatus.COMPLETED);
-            record.setCompletedAt(Instant.now());
+            record.setCompletedAt(completedAt);
+            record.setChecksumDurationMinutes(
+                    BigDecimal.valueOf(Duration.between(record.getClaimedAt(), completedAt).toMillis())
+                            .divide(BigDecimal.valueOf(60000), 8, RoundingMode.HALF_UP));
         });
     }
 
